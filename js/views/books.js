@@ -56,9 +56,9 @@ Views.books = {
     container.querySelector('#book-count').textContent = entries.length;
 
     if (!entries.length) {
-      listEl.innerHTML = UI.emptyState(
-        { wrong: '错题本还是空的——在「刷题」页作答后勾选归档', good: '好题本还是空的——把值得反复研读的题归档进来', template: '模板本还是空的——把值得总结成模板的题归档进来' }[this.kind],
-      );
+      listEl.innerHTML = UI.emptyState(this.search
+        ? `没有匹配「${this.search}」的结果，试试其他关键词`
+        : { wrong: '错题本还是空的——在「刷题」页作答后勾选归档', good: '好题本还是空的——把值得反复研读的题归档进来', template: '模板本还是空的——把值得总结成模板的题归档进来' }[this.kind]);
       return;
     }
 

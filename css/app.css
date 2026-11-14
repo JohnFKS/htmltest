@@ -255,7 +255,7 @@ h1.page-title { font-size: 21px; margin: 0 0 4px; }
 .notes-editor { display: flex; flex-direction: column; min-width: 0; }
 .note-editor-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
 .note-title-input {
-  flex: 1; font-size: 17px; font-weight: 700; padding: 8px 12px;
+  flex: 1; min-width: 0; font-size: 17px; font-weight: 700; padding: 8px 12px;
   border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--ink);
   font-family: var(--font);
 }
@@ -431,4 +431,19 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
   .notes-layout, .quiz-layout, .annot-main { grid-template-columns: 1fr; }
   .notes-list, .quiz-side, .annot-side { max-height: 220px; }
   .view { padding: 14px; }
+}
+@media (max-width: 700px) {
+  /* 顶栏换行：品牌一行，导航独立成行，徽章不遮挡导航 */
+  .topbar { flex-wrap: wrap; height: auto; padding: 8px 14px; row-gap: 6px; }
+  .brand { flex: 1; }
+  .top-actions { flex: 0; }
+  .nav { order: 3; width: 100%; flex-basis: 100%; }
+  /* 编辑器头部按钮行换行 */
+  .note-editor-head { flex-wrap: wrap; }
+  /* 画布不超屏 */
+  #draw-canvas, #annot-overlay, #annot-base { max-width: 100%; height: auto; }
+  .draw-canvas-wrap, .annot-canvas-box { max-width: 100%; overflow: hidden; }
+  /* 选项与表格防溢出 */
+  .q-options li { word-break: break-all; }
+  .rich table, .ai-report table { display: block; overflow-x: auto; }
 }

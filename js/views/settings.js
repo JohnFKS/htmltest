@@ -34,16 +34,20 @@ Views.settings = {
           </div>
           <div class="form-row">
             <div class="field">
+              <label class="field-label">向量模型（相似度精排，可选）</label>
+              <input class="input" id="ai-embed" value="${U.esc(ai.embedModel)}" placeholder="text-embedding-3-small 等">
+            </div>
+            <div class="field">
               <label class="field-label">认证方式</label>
               <select class="select" id="ai-auth">
                 <option value="bearer" ${(ai.authStyle || 'bearer') === 'bearer' ? 'selected' : ''}>Authorization: Bearer（OpenAI 标准）</option>
                 <option value="apikey" ${ai.authStyle === 'apikey' ? 'selected' : ''}>api-key 请求头（Dots 等平台）</option>
               </select>
             </div>
-            <div class="field">
-              <label class="field-label">温度 temperature（${ai.temperature}）</label>
-              <input type="range" id="ai-temp" min="0" max="1" step="0.1" value="${ai.temperature}">
-            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">温度 temperature（${ai.temperature}）</label>
+            <input type="range" id="ai-temp" min="0" max="1" step="0.1" value="${ai.temperature}">
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-primary" id="ai-save">保存配置</button>
