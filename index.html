@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>智学笔记 · HTML 原生笔记与刷题系统</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <!-- KaTeX 本地 vendor：文件不存在时 onerror 移除，公式优雅降级为原文 -->
+  <link id="katex-css" rel="stylesheet" href="/vendor/katex/katex.min.css" onerror="this.remove()">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">✒</span>智学笔记</div>
+      <nav id="nav" class="nav"></nav>
+      <div class="top-actions">
+        <span id="ai-badge" class="ai-badge demo" title="在「设置」中配置大模型 API">演示模式</span>
+      </div>
+    </header>
+    <main id="view" class="view"></main>
+  </div>
+
+  <div id="toast-wrap" class="toast-wrap"></div>
+  <div id="modal-root"></div>
+
+  <script src="/vendor/html2canvas/html2canvas.min.js"></script>
+  <script src="/js/core/util.js"></script>
+  <script src="/js/core/api.js"></script>
+  <script src="/js/core/store.js"></script>
+  <script src="/js/core/sanitize.js"></script>
+  <script src="/js/core/md.js"></script>
+  <script src="/js/core/katex.js"></script>
+  <script src="/js/core/ui.js"></script>
+  <script src="/js/ai/prompts.js"></script>
+  <script src="/js/ai/similarity.js"></script>
+  <script src="/js/ai/mock.js"></script>
+  <script src="/js/ai/provider.js"></script>
+  <script src="/js/views/notes.js"></script>
+  <script src="/js/views/annotator.js"></script>
+  <script src="/js/views/quiz.js"></script>
+  <script src="/js/views/books.js"></script>
+  <script src="/js/views/templates.js"></script>
+  <script src="/js/views/settings.js"></script>
+  <script src="/js/views/help.js"></script>
+  <script src="/js/core/app.js"></script>
+</body>
+</html>

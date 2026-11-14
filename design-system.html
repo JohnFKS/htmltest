@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>智学笔记 · 设计系统（视觉基准）</title>
+<link rel="stylesheet" href="/css/app.css">
+<style>
+  .swatch { height: 54px; border-radius: 8px; border: 1px solid var(--line); display: flex; align-items: flex-end; padding: 6px 10px; font-size: 11px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
+  .grid-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+  section { max-width: 1000px; margin: 0 auto 40px; }
+  h2.sec { border-left: 4px solid var(--primary); padding-left: 10px; }
+</style>
+</head>
+<body>
+<div class="view" style="max-width:1040px">
+  <h1 class="page-title">智学笔记 · 设计系统</h1>
+  <div class="page-sub">本页是全应用的视觉基准：所有视图的组件样式必须取自这里。修改 design token 只需改 app.css 的 :root。</div>
+
+  <section>
+    <h2 class="sec">色板（宣纸 + 墨 + 朱批）</h2>
+    <div class="grid-colors">
+      <div class="swatch" style="background:var(--bg);color:var(--ink)">bg 宣纸底</div>
+      <div class="swatch" style="background:var(--surface);color:var(--ink)">surface 卡片</div>
+      <div class="swatch" style="background:var(--surface-2);color:var(--ink)">surface-2 面板</div>
+      <div class="swatch" style="background:var(--ink)">ink 墨色</div>
+      <div class="swatch" style="background:var(--primary)">primary 墨绿</div>
+      <div class="swatch" style="background:var(--accent)">accent 朱批红</div>
+      <div class="swatch" style="background:var(--wrong)">wrong 错题</div>
+      <div class="swatch" style="background:var(--good)">good 好题</div>
+      <div class="swatch" style="background:var(--tpl)">tpl 模板</div>
+      <div class="swatch" style="background:var(--warn)">warn 演示/提醒</div>
+      <div class="swatch" style="background:var(--gold)">gold 高亮</div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">按钮</h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-primary">主要操作</button>
+      <button class="btn">默认按钮</button>
+      <button class="btn btn-accent">朱批（归档）</button>
+      <button class="btn btn-danger">危险操作</button>
+      <button class="btn btn-ghost">幽灵按钮</button>
+      <button class="btn btn-sm btn-primary">小按钮</button>
+      <button class="btn" disabled>禁用态</button>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">表单</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+      <div class="field"><label class="field-label">输入框</label><input class="input" placeholder="placeholder…"></div>
+      <div class="field"><label class="field-label">下拉框</label><select class="select"><option>选项一</option></select></div>
+      <div class="field"><label class="field-label">文本域</label><textarea class="textarea" rows="2">内容…</textarea></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">标签 chips 与判定徽章</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span class="chip">默认</span>
+      <span class="chip chip-tag">知识点</span>
+      <span class="chip chip-wrong">错题</span>
+      <span class="chip chip-good">好题</span>
+      <span class="chip chip-tpl">模板</span>
+      <span class="verdict-badge verdict-same">✔ 同一题型</span>
+      <span class="verdict-badge verdict-diff">✘ 不同题型</span>
+      <span class="ai-demo-badge">⚑ 演示模式输出</span>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">卡片与三本左边条</h2>
+    <div class="card entry-card k-wrong" style="margin-bottom:10px"><div class="card-title">📕 错题本条目</div><div class="entry-stem">题干示例：已知函数 f(x)=x²−2ax+3 在 [0,2] 上单调递减…</div></div>
+    <div class="card entry-card k-good" style="margin-bottom:10px"><div class="card-title">📗 好题本条目</div><div class="entry-stem">一题多能、值得反复研读的题。</div></div>
+    <div class="card entry-card k-tpl"><div class="card-title">📘 模板本条目</div><div class="entry-stem">可总结为做题模板的题。</div></div>
+  </section>
+
+  <section>
+    <h2 class="sec">AI 报告样式（受控 HTML 片段）</h2>
+    <div class="card"><div class="ai-report">
+      <h4>批改结论</h4>
+      <p>判定：<span class="hl-warn">部分正确</span>　得分：<b>68</b> / 100。关键步骤缺失，模型识别正确。</p>
+      <h4>评分细则</h4>
+      <table><thead><tr><th>步骤</th><th>分值</th><th>表现</th><th>得分</th></tr></thead>
+        <tbody><tr><td>识别模型</td><td>30</td><td class="hl-good">达成</td><td>28</td></tr>
+        <tr><td>推理计算</td><td>40</td><td class="hl-bad">漏分类讨论</td><td>18</td></tr>
+        <tr><td>结论</td><td>30</td><td class="hl-warn">不完全</td><td>22</td></tr></tbody></table>
+      <h4>折叠解析</h4>
+      <details><summary>展开独立求解过程</summary><p>这里放完整的解题过程，行内公式 $a^2+b^2=c^2$。</p></details>
+      <blockquote>建议：先补齐"分类讨论"的 checklist，再重做一遍本题。</blockquote>
+    </div></div>
+  </section>
+
+  <section>
+    <h2 class="sec">相似度评分条与 diff</h2>
+    <div style="display:flex;gap:16px;align-items:center;margin-bottom:12px">
+      <div class="score-bar high" style="width:180px"><div style="width:86%"></div></div><span class="small">0.86 高</span>
+      <div class="score-bar" style="width:180px"><div style="width:52%"></div></div><span class="small">0.52 中</span>
+      <div class="score-bar low" style="width:180px"><div style="width:18%"></div></div><span class="small">0.18 低</span>
+    </div>
+    <div class="diff-box">
+      <div><b>新题签名：</b>已知<mark>函数</mark>NxN<mark>Na</mark>N在区间NN上<mark>单调递减</mark></div>
+      <div style="margin-top:8px"><b>候选签名：</b>已知<mark>函数</mark>NxN<mark>Na</mark>N在<mark>单调递减</mark>则N取值范围</div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="sec">Tabs / Toast / 空状态</h2>
+    <div class="tabs">
+      <button class="tab active">文本作答</button><button class="tab">手写作答</button><button class="tab">上传照片</button>
+    </div>
+    <div style="display:flex;gap:10px;margin:14px 0">
+      <div class="toast show">普通提示</div><div class="toast toast-success show">成功提示</div><div class="toast toast-error show">错误提示</div><div class="toast toast-warn show">警告提示</div>
+    </div>
+    <div class="empty" style="border:1px dashed var(--line);border-radius:10px"><div class="empty-icon">🗂</div><div>空状态示例文案</div></div>
+  </section>
+</div>
+</body>
+</html>
