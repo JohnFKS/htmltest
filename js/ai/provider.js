@@ -162,7 +162,12 @@ window.AI = (() => {
     const prompt = fill(Store.prompt('grade'), { question: qText, answer: aText });
     const images = answer.imageDataUrl ? [answer.imageDataUrl] : null;
     const raw = await callChat({ key: 'grade', filled: prompt, images });
-    return { html: cleanHtml(raw), demo: false };
+    const html = cleanHtml(raw);
+    // 解析判定与得分（供仪表盘统计考点掌握度）
+    const cls = html.match(/class="hl-(good|warn|bad)"/);
+    const verdict = cls ? { 'hl-good': 'correct', 'hl-warn': 'partial', 'hl-bad': 'wrong' }[cls[1]] : null;
+    const scoreM = html.match(/得分[：:]\s*(\d{1,3})/);
+    return { html, demo: false, verdict, score: scoreM ? U.clamp(+scoreM[1], 0, 100) : null };
   }
 
   async function essence(question, analysis, gradeSummary) {
@@ -246,5 +251,29 @@ window.AI = (() => {
     return { html: cleanHtml(await callChat({ key: 'ctxAsk', filled: prompt })), demo: false };
   }
 
-  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse, ctxAsk };
+  // 从题目/本质思路生成复习卡片（JSON：{cards:[{front, back}]}）
+  async function makeCards(question, analysis, essenceHtml) {
+    if (!live()) return Mock.makeCards(question, analysis);
+    const prompt = fill(Store.prompt('makeCards'), {
+      question: U.stripHtml(question.stem).slice(0, 500), analysis: analysis || '（无）', essence: U.stripHtml(essenceHtml || ''),
+    });
+    const data = extractJson(await callChat({ key: 'makeCards', filled: prompt, temperature: 0.3 }));
+    if (!Array.isArray(data.cards)) throw new Error('卡片返回格式异常');
+    return { data: { cards: data.cards.slice(0, 5).map(c => ({ front: String(c.front || ''), back: String(c.back || '') })) }, demo: false };
+  }
+
+  // PDF 教材片段 → 结构化学习笔记（markdown）；分块长转换，放宽输出
+  async function pdfNotes(chunk, pageFrom, pageTo) {
+    if (!live()) return Mock.pdfNotes(chunk, pageFrom, pageTo);
+    const prompt = fill(Store.prompt('pdfNotes'), {
+      chunk: String(chunk).slice(0, 24000), pageFrom, pageTo,
+    });
+    const raw = await callChat({ key: 'pdfNotes', filled: prompt, temperature: 0.2, maxTokens: 8000 });
+    let t = String(raw || '').trim();
+    const fence = t.match(/```(?:markdown|md)?\s*([\s\S]*?)```/);
+    if (fence) t = fence[1].trim();
+    return { md: t, demo: false };
+  }
+
+  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse, ctxAsk, makeCards, pdfNotes };
 })();

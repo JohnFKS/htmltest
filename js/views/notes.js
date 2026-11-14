@@ -16,6 +16,7 @@ Views.notes = {
             <input class="note-title-input" id="note-title" placeholder="笔记标题…">
             <button class="btn btn-ghost btn-sm" id="note-md-import" title="把 Markdown 文本转换为富文本块追加到笔记">MD 粘贴转换</button>
             <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">📄 导入文件</button>
+            <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">📕 导入 PDF</button>
             <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
             <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">导出 HTML</button>
           </div>
@@ -176,6 +177,42 @@ Views.notes = {
       input.click();
     };
 
+    // ---------- 导入 PDF 教材（pdf.js 提取文本 → AI 分块笔记化 → 可选出题） ----------
+    container.querySelector('#note-import-pdf').onclick = () => {
+      if (!window.pdfjsLib) return UI.toast('未检测到 pdf.js（vendor/pdfjs/），无法导入 PDF', 'error');
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = '.pdf,application/pdf';
+      input.onchange = () => {
+        const f = input.files[0];
+        if (!f) return;
+        let m;
+        m = UI.modal({
+          title: `导入 PDF 教材 · ${f.name.slice(0, 24)}`, width: 560, raw: true,
+          body: `
+            <div class="field"><label class="field-label">页码范围（先小范围试效果）</label>
+              <div style="display:flex;gap:8px">
+                <input class="input" id="pdf-from" type="number" min="1" value="1">
+                <input class="input" id="pdf-to" type="number" min="1" value="20">
+              </div>
+              <div class="field-hint">每段交给 AI 整理为结构化学习笔记（保留定义/表格/考点标注）；扫描版 PDF 无文本层，暂不支持</div></div>
+            <div class="field"><label class="field-label">每块页数</label><input class="input" id="pdf-per" type="number" min="2" max="20" value="8"></div>
+            <label class="checkbox-row"><input type="checkbox" id="pdf-genq" checked><span>整理完成后，同时用 AI 生成配套题库</span></label>`,
+          actions: [
+            { label: '取消' },
+            { label: '🚀 开始导入', primary: true, onClick: close => {
+              const from = U.clamp(+m.el.querySelector('#pdf-from').value || 1, 1, 5000);
+              const to = U.clamp(+m.el.querySelector('#pdf-to').value || 20, from, 5000);
+              const per = U.clamp(+m.el.querySelector('#pdf-per').value || 8, 2, 20);
+              const genq = m.el.querySelector('#pdf-genq').checked;
+              close();
+              this.importPdf(f, from, to, per, genq, editor, titleInput);
+            } },
+          ],
+        });
+      };
+      input.click();
+    };
+
     // ---------- 插入批注产物 ----------
     container.querySelector('#note-insert-annot').onclick = () => this.pickAnnot(editor, debouncedSave);
 
@@ -282,6 +319,57 @@ code{font-family:Consolas,monospace}img{max-width:100%}</style></head>
     Ktx.renderMath(editor);
     Store.save();
     UI.toast('图片已上传插入');
+  },
+
+  async importPdf(file, from, to, per, genq, editor, titleInput) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.js';
+    UI.spinner(true, '读取 PDF…');
+    try {
+      const buf = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+      const pages = [];
+      for (let p = from; p <= Math.min(to, doc.numPages); p++) {
+        const page = await doc.getPage(p);
+        const tc = await page.getTextContent();
+        const text = tc.items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
+        if (text) pages.push({ p, text });
+      }
+      if (!pages.length) { UI.spinner(false); return UI.toast('未提取到文本——可能是扫描版 PDF（无文字层），需要 OCR，暂未支持', 'warn'); }
+      const chunks = [];
+      for (let i = 0; i < pages.length; i += per) {
+        const seg = pages.slice(i, i + per);
+        chunks.push({ from: seg[0].p, to: seg[seg.length - 1].p, text: seg.map(x => `【第${x.p}页】${x.text}`).join('\n') });
+      }
+      let mdAll = `# ${file.name.replace(/\.pdf$/i, '')}（AI 整理笔记）\n`;
+      let i = 0;
+      for (const c of chunks) {
+        i++;
+        UI.spinner(true, `AI 整理教材 ${i}/${chunks.length}（第 ${c.from}-${c.to} 页）…`);
+        const r = await AI.pdfNotes(c.text, c.from, c.to);
+        mdAll += `\n\n${r.md}\n`;
+      }
+      const title = file.name.replace(/\.pdf$/i, '').slice(0, 40);
+      const n = Store.insert('notes', { id: U.uid('note'), title, content: Sanitize.html(MD.toHtml(mdAll)), createdAt: U.now(), updatedAt: U.now(), source: 'pdf' });
+      this.currentId = n.id;
+      this.open(n.id, editor, titleInput);
+      Ktx.renderMath(editor);
+      UI.spinner(false);
+      UI.toast(`PDF 已整理为笔记（${pages.length} 页 → ${chunks.length} 块）`, 'success');
+      if (genq) {
+        UI.spinner(true, 'AI 从教材生成题库…');
+        try {
+          const r = await AI.bankParse(mdAll, { mode: 'generate', maxChars: 60000 });
+          const bank = Store.insert('banks', {
+            id: U.uid('bank'), name: `${title}（AI 出题）`, createdAt: U.now(), updatedAt: U.now(),
+            questions: (r.data.questions || []).map(q => ({ ...q, id: U.uid('q') })),
+          });
+          UI.toast(`已生成题库「${bank.name}」（${bank.questions.length} 题），去「刷题」页查看`, 'success');
+        } catch (e) { UI.toast(`出题失败：${e.message}`, 'warn'); }
+      }
+    } catch (e) {
+      UI.spinner(false);
+      UI.toast(`PDF 导入失败：${e.message}`, 'error');
+    }
   },
 
   pickImage(editor, save) {

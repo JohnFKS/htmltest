@@ -106,6 +106,7 @@ Views.quiz = {
     container.innerHTML = `
       <div class="tabs" id="quiz-tabs">
         <button class="tab ${st.tab === 'practice' ? 'active' : ''}" data-name="practice">📝 练习</button>
+        <button class="tab ${st.tab === 'exam' ? 'active' : ''}" data-name="exam">🎯 模拟考试</button>
         <button class="tab ${st.tab === 'import' ? 'active' : ''}" data-name="import">📥 题库导入</button>
       </div>
       <div id="quiz-body"></div>`;
@@ -119,8 +120,10 @@ Views.quiz = {
   renderTab(body) {
     const st = this.state;
     body.innerHTML = `<div class="tab-panel ${st.tab === 'practice' ? 'active' : ''}" data-name="practice" id="panel-practice"></div>
+                      <div class="tab-panel ${st.tab === 'exam' ? 'active' : ''}" data-name="exam" id="panel-exam"></div>
                       <div class="tab-panel ${st.tab === 'import' ? 'active' : ''}" data-name="import" id="panel-import"></div>`;
     if (st.tab === 'practice') this.renderPractice(body.querySelector('#panel-practice'));
+    else if (st.tab === 'exam') this.renderExam(body.querySelector('#panel-exam'));
     else this.renderImport(body.querySelector('#panel-import'));
     Ktx.renderMath(body);
   },
@@ -284,12 +287,21 @@ Views.quiz = {
               ${banks.map(b => `<option value="${b.id}" ${b.id === bank.id ? 'selected' : ''}>${U.esc(b.name)}（${b.questions.length}）</option>`).join('')}
             </select>
             <div id="q-nav" style="margin-top:10px;max-height:46vh;overflow-y:auto"></div>
+            <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+              <button class="btn btn-ghost btn-sm" id="rename-bank">重命名</button>
+              <button class="btn btn-ghost btn-sm" id="manage-qs">管理题目</button>
+            </div>
             <button class="btn btn-ghost btn-sm" id="del-bank" style="margin-top:8px;color:var(--danger)">删除当前题库</button>
           </div>
         </div>
         <div id="q-main"></div>
       </div>`;
     panel.querySelector('#bank-select').onchange = e => { st.bankId = e.target.value; st.qIndex = 0; this.renderTab(panel.closest('#quiz-body') || panel.parentElement); };
+    panel.querySelector('#rename-bank').onclick = async () => {
+      const name = await UI.prompt('重命名题库', bank.name);
+      if (name && name !== bank.name) { Store.update('banks', bank.id, { name }); UI.toast('已重命名', 'success'); this.renderTab(panel.closest('#quiz-body') || panel.parentElement); }
+    };
+    panel.querySelector('#manage-qs').onclick = () => this.manageQuestions(bank);
     panel.querySelector('#del-bank').onclick = async () => {
       if (await UI.confirm(`删除题库「${bank.name}」及其全部题目？（作答记录保留）`, { danger: true })) {
         Store.remove('banks', bank.id);
@@ -372,7 +384,7 @@ Views.quiz = {
       const rec = this.ensureRecord(draft, q);
       const img = draft.imageDataUrl || draft.drawDataUrl;
       const result = await AI.grade(q, { text: draft.text, hasImage: !!img, imageDataUrl: img });
-      rec.aiGrade = { html: result.html, demo: result.demo, time: U.now() };
+      rec.aiGrade = { html: result.html, demo: result.demo, verdict: result.verdict || null, score: result.score ?? null, time: U.now() };
       if (draft.imageDataUrl && !rec.imageUrl) rec.imageUrl = await Api.upload(draft.imageDataUrl);
       else if (draft.drawDataUrl && !rec.imageUrl) rec.imageUrl = await Api.upload(draft.drawDataUrl);
       Store.save();
@@ -602,6 +614,248 @@ Views.quiz = {
         Store.remove('records', btn.dataset.delRec);
         App.route('quiz');
       }
+    });
+  },
+  // ================= 模拟考试 =================
+  renderExam(panel) {
+    const banks = Store.coll('banks');
+    if (!banks.length) {
+      panel.innerHTML = UI.emptyState('还没有题库，先去「题库导入」加一个吧');
+      return;
+    }
+    const exams = Store.coll('exams').slice(0, 8);
+    panel.innerHTML = `
+      <div class="card">
+        <div class="card-title">🎯 组卷配置</div>
+        <div class="form-row">
+          <div class="field"><label class="field-label">题量</label>
+            <select class="select" id="ex-count"><option value="10">10 题</option><option value="20" selected>20 题</option><option value="30">30 题</option><option value="all">全部</option></select></div>
+          <div class="field"><label class="field-label">范围</label>
+            <select class="select" id="ex-scope"><option value="all">全部题库</option>${banks.map(b => `<option value="${b.id}">${U.esc(b.name)}</option>`).join('')}</select></div>
+          <div class="field"><label class="field-label">时长（分钟）</label>
+            <input class="input" id="ex-duration" type="number" min="5" max="300" value="45"></div>
+        </div>
+        <div class="field-hint">客观题按选项自动判分，主观题标记后可逐题请求 AI 解析；错题自动归档错题本</div>
+        <button class="btn btn-primary" id="ex-start">🚀 开始考试</button>
+      </div>
+      ${exams.length ? `<div class="section-title">历史成绩</div>` + exams.map(e => `
+        <div class="record-card" style="display:flex;gap:10px;align-items:center">
+          <b style="color:${e.score >= 60 ? 'var(--good)' : 'var(--wrong)'}">${e.score} 分</b>
+          <span class="small">${e.total} 题 · 错 ${e.wrongCount} · 未答 ${e.unanswered}</span>
+          <span class="muted small" style="flex:1">${U.fmt(e.finishedAt)}</span>
+          <span class="chip">${U.esc(e.scopeName || '')}</span>
+        </div>`).join('') : ''}`;
+
+    panel.querySelector('#ex-start').onclick = () => {
+      const scope = panel.querySelector('#ex-scope').value;
+      const count = panel.querySelector('#ex-count').value;
+      const duration = U.clamp(+panel.querySelector('#ex-duration').value || 45, 5, 300);
+      const pool = (scope === 'all' ? banks.flatMap(b => b.questions.map(q => ({ ...q, bankName: b.name })))
+        : (Store.find('banks', scope)?.questions || []).map(q => ({ ...q, bankName: Store.find('banks', scope).name })));
+      if (pool.length < 3) return UI.toast('题量不足（至少 3 题）', 'warn');
+      // 洗牌取前 N
+      const shuffled = [...pool].sort(() => Math.random() - 0.5);
+      const qids = shuffled.slice(0, count === 'all' ? pool.length : Math.min(+count, pool.length));
+      this.exam = { questions: qids, answers: {}, startedAt: Date.now(), durationMs: duration * 60000, scopeName: scope === 'all' ? '全部题库' : Store.find('banks', scope).name };
+      this.renderExamRunner(panel);
+    };
+  },
+
+  renderExamRunner(panel) {
+    const ex = this.exam;
+    if (!this._examTimer) clearInterval(this._examTimer);
+    const renderQ = () => {
+      const i = this.examIdx || 0;
+      const q = ex.questions[i];
+      const left = Math.max(0, ex.durationMs - (Date.now() - ex.startedAt));
+      const mm = String(Math.floor(left / 60000)).padStart(2, '0');
+      const ss = String(Math.floor(left % 60000 / 1000)).padStart(2, '0');
+      panel.innerHTML = `
+        <div class="card q-card">
+          <div class="q-meta">
+            <span class="chip">第 ${i + 1} / ${ex.questions.length} 题</span>
+            ${q.chapter ? `<span class="chip">${U.esc(q.chapter)}</span>` : ''}
+            <span class="exam-timer" style="margin-left:auto" id="ex-timer">⏱ ${mm}:${ss}</span>
+          </div>
+          <div class="q-stem rich">${Sanitize.html(MD.toHtml(q.stem))}</div>
+          ${q.options?.length ? `<ul class="q-options">${q.options.map(o => `<li>${Sanitize.html(MD.toHtml(o))}</li>`).join('')}</ul>` : ''}
+          <div class="section-title">作答（考试模式不显示答案）</div>
+          <textarea class="textarea" id="ex-answer" rows="3" placeholder="写下选项或解答…">${U.esc(ex.answers[q.id] || '')}</textarea>
+          <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" id="ex-prev" ${i <= 0 ? 'disabled' : ''}>← 上一题</button>
+            <button class="btn btn-ghost btn-sm" id="ex-next" ${i >= ex.questions.length - 1 ? 'disabled' : ''}>下一题 →</button>
+            <span style="flex:1"></span>
+            <button class="btn btn-accent" id="ex-submit">交卷</button>
+          </div>
+          <div style="display:flex;gap:4px;margin-top:10px;flex-wrap:wrap">${ex.questions.map((qq, k) =>
+            `<span class="chip ${ex.answers[qq.id] ? 'chip-good' : ''}" style="cursor:pointer" data-jump="${k}">${k + 1}</span>`).join('')}</div>
+        </div>`;
+      panel.querySelector('#ex-answer').oninput = e => { ex.answers[q.id] = e.target.value; };
+      panel.querySelector('#ex-prev').onclick = () => { this.examIdx = i - 1; renderQ(); };
+      panel.querySelector('#ex-next').onclick = () => { this.examIdx = i + 1; renderQ(); };
+      panel.querySelectorAll('[data-jump]').forEach(c => c.onclick = () => { this.examIdx = +c.dataset.jump; renderQ(); });
+      panel.querySelector('#ex-submit').onclick = () => this.submitExam(panel);
+      this._renderQ = renderQ;
+    };
+    renderQ();
+    this._examTimer = setInterval(() => {
+      const left = ex.durationMs - (Date.now() - ex.startedAt);
+      if (left <= 0) { clearInterval(this._examTimer); this._examTimer = null; UI.toast('考试时间到，自动交卷', 'warn'); this.submitExam(panel); return; }
+      const t = panel.querySelector('#ex-timer');
+      if (t) t.textContent = `⏱ ${String(Math.floor(left / 60000)).padStart(2, '0')}:${String(Math.floor(left % 60000 / 1000)).padStart(2, '0')}`;
+    }, 1000);
+  },
+
+  examCheck(q, given) {
+    const givenText = U.stripHtml(given || '');
+    if (!givenText) return null;
+    const correctLetters = (q.answer || '').toUpperCase().match(/[A-K]/g) || [];
+    if (q.options?.length && correctLetters.length) {
+      const letters = givenText.toUpperCase().match(/[A-K]/g) || [];
+      if (!letters.length) return null;
+      const set = new Set(letters);
+      return correctLetters.every(l => set.has(l));
+    }
+    const a = Sim.normalize(q.answer || ''), b = Sim.normalize(givenText);
+    if (!a || a.length < 2) return null;
+    return b.includes(a.slice(0, Math.min(20, a.length)));
+  },
+
+  async submitExam(panel) {
+    if (this._examTimer) { clearInterval(this._examTimer); this._examTimer = null; }
+    const ex = this.exam;
+    const results = ex.questions.map(q => {
+      const given = ex.answers[q.id] || '';
+      const verdict = this.examCheck(q, given);
+      return { q, given, verdict };
+    });
+    const answered = results.filter(r => r.verdict !== null);
+    const correct = results.filter(r => r.verdict === true).length;
+    const score = answered.length ? Math.round(correct / ex.questions.length * 100) : 0;
+    const wrongList = results.filter(r => r.verdict !== true);
+    // 错题自动归档错题本
+    for (const r of wrongList) {
+      Store.insert('entries', {
+        id: U.uid('e'), kind: 'wrong', questionId: r.q.id, recordId: null,
+        snapshot: { stem: r.q.stem, options: r.q.options, answer: r.q.answer, analysis: r.q.analysis, number: r.q.number, chapter: r.q.chapter, knowledge: r.q.knowledge, bankName: r.q.bankName, exam: true },
+        myAnswer: { text: r.given, mode: 'text' }, tags: ['模拟考试'],
+        createdAt: U.now(),
+      });
+    }
+    Store.insert('exams', {
+      id: U.uid('exam'), scopeName: ex.scopeName, total: ex.questions.length,
+      correct, wrongCount: wrongList.filter(r => r.verdict === false).length,
+      unanswered: results.filter(r => r.verdict === null).length,
+      score, results: results.map(r => ({ qid: r.q.id, given: r.given, verdict: r.verdict })),
+      finishedAt: U.now(),
+    });
+    this.exam = null;
+    panel.innerHTML = `
+      <div class="card" style="text-align:center;padding:30px">
+        <div style="font-size:44px">${score >= 60 ? '🎉' : '💪'}</div>
+        <div class="card-title" style="justify-content:center;font-size:26px">${score} 分</div>
+        <div class="muted">${ex.questions.length} 题 · 正确 ${correct} · 错误 ${wrongList.filter(r => r.verdict === false).length} · 未答 ${results.filter(r => r.verdict === null).length} · 错题已自动归档错题本（${wrongList.length}）</div>
+      </div>
+      <div class="section-title">逐题结果</div>
+      ${results.map((r, i) => `
+        <div class="record-card" data-exq="${i}">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span class="chip ${r.verdict === true ? 'chip-good' : r.verdict === false ? 'chip-wrong' : ''}">${r.verdict === true ? '✓ 正确' : r.verdict === false ? '✗ 错误' : '— 未答'}</span>
+            <b class="small">${U.esc(r.q.number || i + 1)}.</b>
+            <span class="small" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${U.esc(U.stripHtml(r.q.stem).slice(0, 46))}</span>
+            ${r.verdict !== true && AI.live() ? `<button class="btn btn-sm" data-ai="${i}">🤖 AI 解析此题</button>` : ''}
+          </div>
+          ${r.given ? `<div class="small" style="color:var(--ink-2);margin-top:4px">我的作答：${U.esc(r.given.slice(0, 80))}</div>` : ''}
+          ${r.verdict !== true && r.q.answer ? `<div class="small" style="margin-top:2px"><span class="chip chip-good">参考答案</span> ${U.esc(U.stripHtml(r.q.answer).slice(0, 60))}</div>` : ''}
+          <div class="ai-exam-report"></div>
+        </div>`).join('')}
+      <div style="margin-top:14px"><button class="btn btn-primary" id="ex-back">返回考试中心</button></div>`;
+    panel.querySelector('#ex-back').onclick = () => this.renderExam(panel);
+    panel.querySelectorAll('[data-ai]').forEach(btn => btn.onclick = async e => {
+      const i = +btn.dataset.ai;
+      const r = results[i];
+      await UI.busy(btn, async () => {
+        const res = await AI.grade(r.q, { text: r.given, hasImage: false });
+        const card = panel.querySelector(`[data-exq="${i}"] .ai-exam-report`);
+        card.innerHTML = `<div class="section-title" style="font-size:14px">AI 解析</div><div class="ai-report">${res.html}</div>`;
+        Ktx.renderMath(card);
+      }, 'AI 解析中');
+    });
+    Ktx.renderMath(panel);
+    UI.toast('考试完成，错题已归档', 'success');
+  },
+
+  // ================= 题目增删改查 =================
+  manageQuestions(bank) {
+    let m;
+    const renderList = () => {
+      m.bodyEl.querySelector('#mq-list').innerHTML = bank.questions.map((q, i) => `
+        <div style="display:flex;gap:8px;align-items:center;padding:7px 4px;border-bottom:1px dashed var(--line)">
+          <span class="chip">${U.esc(q.number || i + 1)}</span>
+          <span class="small" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${U.esc(U.stripHtml(q.stem).slice(0, 52))}</span>
+          <button class="btn btn-sm" data-edit="${i}">编辑</button>
+          <button class="btn btn-sm btn-ghost" data-del="${i}" style="color:var(--danger)">删除</button>
+        </div>`).join('') || '<div class="muted">题库为空</div>';
+      m.bodyEl.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => this.editQuestionModal(bank, bank.questions[+b.dataset.edit], renderList));
+      m.bodyEl.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+        if (await UI.confirm('删除这道题目？（已归档条目不受影响）', { danger: true })) {
+          bank.questions.splice(+b.dataset.del, 1);
+          Store.update('banks', bank.id, { questions: bank.questions });
+          renderList();
+        }
+      });
+    };
+    m = UI.modal({
+      title: `题目管理 · ${bank.name}`, width: 780, raw: true,
+      body: `<div id="mq-list"></div>
+        <button class="btn btn-primary" id="mq-add" style="margin-top:10px">＋ 手动添加题目</button>`,
+      actions: [{ label: '完成', primary: true }],
+    });
+    m.bodyEl.querySelector('#mq-add').onclick = () => this.editQuestionModal(bank, null, renderList);
+    renderList();
+  },
+
+  editQuestionModal(bank, q, onDone) {
+    let m;
+    m = UI.modal({
+      title: q ? `编辑题目 ${q.number || ''}` : '添加题目', width: 720, raw: true,
+      body: `
+        <div class="form-row">
+          <div class="field"><label class="field-label">题号</label><input class="input" id="eq-number" value="${U.esc(q?.number || '')}"></div>
+          <div class="field"><label class="field-label">章节</label><input class="input" id="eq-chapter" value="${U.esc(q?.chapter || '')}"></div>
+          <div class="field"><label class="field-label">知识点</label><input class="input" id="eq-knowledge" value="${U.esc(q?.knowledge || '')}"></div>
+        </div>
+        <div class="field"><label class="field-label">题干（支持 markdown / $公式$ / 原生 HTML 表格）</label>
+          <textarea class="textarea" id="eq-stem" rows="4">${U.esc(q?.stem || '')}</textarea></div>
+        <div class="field"><label class="field-label">选项（每行一个，如 A. xxx；无选项留空）</label>
+          <textarea class="textarea" id="eq-options" rows="3">${U.esc((q?.options || []).join('\n'))}</textarea></div>
+        <div class="form-row">
+          <div class="field"><label class="field-label">答案</label><input class="input" id="eq-answer" value="${U.esc(q?.answer || '')}"></div>
+        </div>
+        <div class="field"><label class="field-label">解析</label>
+          <textarea class="textarea" id="eq-analysis" rows="3">${U.esc(q?.analysis || '')}</textarea></div>`,
+      actions: [
+        { label: '取消' },
+        { label: '保存', primary: true, onClick: close => {
+          const stem = m.el.querySelector('#eq-stem').value.trim();
+          if (!stem) return UI.toast('题干不能为空', 'warn');
+          const patch = {
+            number: m.el.querySelector('#eq-number').value.trim() || String(bank.questions.length + 1),
+            chapter: m.el.querySelector('#eq-chapter').value.trim(),
+            knowledge: m.el.querySelector('#eq-knowledge').value.trim(),
+            stem,
+            options: m.el.querySelector('#eq-options').value.split('\n').map(x => x.trim()).filter(Boolean),
+            answer: m.el.querySelector('#eq-answer').value.trim(),
+            analysis: m.el.querySelector('#eq-analysis').value.trim(),
+          };
+          if (q) Object.assign(q, patch);
+          else bank.questions.push({ id: U.uid('q'), ...patch });
+          Store.update('banks', bank.id, { questions: bank.questions });
+          UI.toast(q ? '题目已更新' : '题目已添加', 'success');
+          onDone && onDone();
+          close();
+        } },
+      ],
     });
   },
 };

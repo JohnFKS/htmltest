@@ -32,7 +32,8 @@ window.Mock = (() => {
       comment = '作答过于简短或方向不对，建议回看题目考察的核心模型。';
     }
     const kws = keywordsOf(U.stripHtml(question.stem));
-    return { html: `${badge}
+    const vmap = { '正确': 'correct', '部分正确': 'partial', '错误': 'wrong', '未作答': 'wrong' };
+    return { verdict: vmap[verdict] || null, score, html: `${badge}
 <h4>批改结论</h4>
 <p>判定：<span class="${color}">${verdict}</span>　得分：<b>${score}</b> / 100</p>
 <p>${comment}</p>
@@ -162,5 +163,28 @@ window.Mock = (() => {
 <li>配置真实 AI 后，这里将基于选中文本给出针对性讲解（HTML 报告，支持表格与公式）</li></ul>`, demo: true };
   }
 
-  return { grade, essence, tags, templateGen, expand, verdict, ask, notesGen, ctxAsk };
+  // 演示：从题目生成复习卡片（本地规则，无需 LLM）
+  function makeCards(question, analysis) {
+    const stem = U.stripHtml(question.stem || '').slice(0, 120);
+    const ans = U.stripHtml(question.answer || '').slice(0, 60) || '见解析';
+    const kws = keywordsOf(U.stripHtml(question.stem || ''));
+    const cards = [
+      { front: `【${kws[0] || '考点'}】${stem.length > 40 ? stem.slice(0, 40) + '……这道题考察什么？' : '这道题的答案是什么？'}`, back: ans },
+    ];
+    if (kws[1]) cards.push({ front: `「${kws[0]}」与「${kws[1]}」分别指什么？`, back: `${kws[0]}：见题目解析；${kws[1]}：见题目解析（演示卡片，配置 AI 后自动提炼最小记忆点）` });
+    return { data: { cards }, demo: true };
+  }
+
+  // 演示：PDF 片段笔记化（保底：保留原文并加结构提示）
+  function pdfNotes(chunk, pageFrom, pageTo) {
+    return { md: `#### 第 ${pageFrom}-${pageTo} 页（演示整理）
+
+> ⚑ 演示模式不调用大模型，以下为原文降噪保留。配置 AI 后将输出结构化学习笔记（考点标注 + 表格保留）。
+
+${String(chunk || '').slice(0, 3000)}
+
+<span class="tag">考点：见原文</span>`, demo: true };
+  }
+
+  return { grade, essence, tags, templateGen, expand, verdict, ask, notesGen, ctxAsk, makeCards, pdfNotes };
 })();

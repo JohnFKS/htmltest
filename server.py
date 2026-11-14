@@ -44,6 +44,8 @@ DEFAULT_DB = {
     "records": [],    # 作答记录
     "entries": [],    # 三本条目（wrong / good / template）
     "templates": [],  # 做题模板库
+    "cards": [],      # 复习卡片（间隔重复）
+    "exams": [],      # 模拟考试记录
 }
 
 DEFAULT_CONFIG = {

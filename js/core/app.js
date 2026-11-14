@@ -3,9 +3,11 @@ window.Views = window.Views || {};
 
 window.App = {
   tabs: [
+    ['dashboard', '仪表盘'],
     ['notes', '笔记'],
     ['annotator', '截图批注'],
     ['quiz', '刷题'],
+    ['review', '复习'],
     ['books', '三本'],
     ['templates', '模板库'],
     ['settings', '设置'],
@@ -19,7 +21,7 @@ window.App = {
     Store.on('config-changed', () => this.updateBadge());
     this.updateBadge();
     window.addEventListener('hashchange', () => this.route(location.hash.slice(1)));
-    this.route(location.hash.slice(1) || 'notes');
+    this.route(location.hash.slice(1) || 'dashboard');
   },
 
   buildNav() {
@@ -42,7 +44,7 @@ window.App = {
   },
 
   route(name) {
-    if (!Views[name]) name = 'notes';
+    if (!Views[name]) name = 'dashboard';
     // 清理上一个视图的全局监听等副作用
     if (this.currentView && Views[this.currentView]?._cleanup) {
       try { Views[this.currentView]._cleanup(); } catch (e) { console.error(e); }

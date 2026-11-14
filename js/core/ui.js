@@ -78,22 +78,22 @@ window.UI = (() => {
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { resolve(input.value.trim()); m.close(); } });
   });
 
-  let spinnerCount = 0;
   function spinner(show, text = '处理中…') {
+    // 幂等模式：show 时若已存在仅更新文案（多次嵌套调用不会导致计数失衡卡死）
     let el = document.getElementById('ui-spinner');
-    spinnerCount = Math.max(0, spinnerCount + (show ? 1 : -1));
-    if (show && !el) {
-      el = document.createElement('div');
-      el.id = 'ui-spinner';
-      el.className = 'spinner-mask';
-      el.innerHTML = `<div class="spinner"></div><div class="spinner-text"></div>`;
-      document.body.appendChild(el);
-    }
-    if (el) {
+    if (show) {
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'ui-spinner';
+        el.className = 'spinner-mask';
+        el.innerHTML = `<div class="spinner"></div><div class="spinner-text"></div>`;
+        document.body.appendChild(el);
+      }
       el.querySelector('.spinner-text').textContent = text;
-      el.style.display = spinnerCount > 0 ? 'flex' : 'none';
-      if (spinnerCount === 0) el.remove();
+      el.style.display = 'flex';
+      return;
     }
+    el?.remove();
   }
 
   const emptyState = (text, extra = '') =>

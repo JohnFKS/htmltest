@@ -22,7 +22,7 @@ async function closeAllModals(page) {
 }
 
 async function resetDB() {
-  const db = { meta: { version: 1, app: 'zhixue-notes' }, notes: [], annots: [], banks: [], records: [], entries: [], templates: [] };
+  const db = { meta: { version: 1, app: 'zhixue-notes' }, notes: [], annots: [], banks: [], records: [], entries: [], templates: [], cards: [], exams: [] };
   const res = await fetch(`${BASE}/api/state`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ db }) });
   return res.ok;
 }
@@ -64,8 +64,10 @@ D. 96
   await page.goto(BASE, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(800);
   ok(await page.title().then(t => t.includes('智学笔记')), '页面标题正确');
-  ok(await page.locator('.nav a').count() === 7, '导航 7 个视图');
+  ok(await page.locator('.nav a').count() === 9, '导航 9 个视图');
   ok(await page.locator('#ai-badge.demo').count() === 1, '演示模式徽章显示');
+  await page.click('#nav a[data-view="notes"]');
+  await page.waitForTimeout(400);
   ok(await page.evaluate(() => document.body.classList.contains('katex-ok')), 'KaTeX 本地 vendor 已加载');
   await shot(page, '01-notes.png');
 
@@ -370,7 +372,7 @@ D. 96
   console.log('== 15. 设置页 ==');
   await page.click('#nav a[data-view="settings"]');
   await page.waitForTimeout(400);
-  ok(await page.locator('.prompt-item').count() === 10, '10 组提示词可编辑');
+  ok(await page.locator('.prompt-item').count() === 12, '12 组提示词可编辑');
   await page.locator('.prompt-item[data-key="grade"] .prompt-head').click(); // 展开面板
   await page.locator('.prompt-item [data-ta="grade"]').fill('自定义批改提示词 E2E');
   await page.locator('.prompt-item [data-save="grade"]').click();
