@@ -54,7 +54,7 @@ window.UI = (() => {
 
   const confirm = (msg, { danger = false } = {}) => new Promise(resolve => {
     modal({
-      title: '确认', body: `<p>${U.esc(msg)}</p>`, width: 420,
+      title: '确认', body: `<p>${U.esc(msg)}</p>`, width: 420, raw: true,
       onClose: () => resolve(false),
       actions: [
         { label: '取消' },
@@ -66,7 +66,7 @@ window.UI = (() => {
   const prompt = (title, def = '', placeholder = '') => new Promise(resolve => {
     const m = modal({
       title, body: `<input class="input" id="ui-prompt-input" value="${U.esc(def)}" placeholder="${U.esc(placeholder)}">`,
-      width: 460,
+      width: 460, raw: true,
       onClose: () => resolve(null),
       actions: [
         { label: '取消' },
