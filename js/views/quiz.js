@@ -139,6 +139,9 @@ Views.quiz = {
         <div style="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-primary" id="imp-parse">解析预览</button>
           <button class="btn" id="imp-ai" title="用大模型解析混乱格式的题库">✨ LLM 智能解析</button>
+          <label class="checkbox-row" title="讲义/笔记里没有现成题目时，让 AI 基于原文内容命题（单选/多选/判断）">
+            <input type="checkbox" id="imp-genmode"><span>📝 笔记出题模式</span>
+          </label>
           <span class="muted">本地解析器离线可用；LLM 解析需在设置中配置 API</span>
         </div>
       </div>
@@ -164,9 +167,12 @@ Views.quiz = {
     const doParse = async (useAI) => {
       const text = panel.querySelector('#imp-text').value;
       if (!text.trim()) return UI.toast('请先粘贴题库文本或载入示例', 'warn');
+      const genMode = useAI && panel.querySelector('#imp-genmode')?.checked;
       let result;
       try {
-        result = await (useAI ? AI.bankParse(text) : Promise.resolve({ data: LocalBankParser.parse(text), demo: true }));
+        result = await (useAI
+          ? AI.bankParse(text, genMode ? { mode: 'generate', maxChars: 150000 } : {})
+          : Promise.resolve({ data: LocalBankParser.parse(text), demo: true }));
       } catch (e) {
         // LLM 解析失败回退本地解析
         if (useAI) {
@@ -364,7 +370,8 @@ Views.quiz = {
     mainEl.querySelector('#ans-save').onclick = () => this.saveRecord(draft, q);
     mainEl.querySelector('#ans-grade').onclick = e => UI.busy(e.target, async () => {
       const rec = this.ensureRecord(draft, q);
-      const result = await AI.grade(q, { text: draft.text, hasImage: !!draft.imageDataUrl, imageDataUrl: draft.imageDataUrl });
+      const img = draft.imageDataUrl || draft.drawDataUrl;
+      const result = await AI.grade(q, { text: draft.text, hasImage: !!img, imageDataUrl: img });
       rec.aiGrade = { html: result.html, demo: result.demo, time: U.now() };
       if (draft.imageDataUrl && !rec.imageUrl) rec.imageUrl = await Api.upload(draft.imageDataUrl);
       else if (draft.drawDataUrl && !rec.imageUrl) rec.imageUrl = await Api.upload(draft.drawDataUrl);

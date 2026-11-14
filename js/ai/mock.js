@@ -125,5 +125,33 @@ window.Mock = (() => {
 <li>配置真实多模态 API 后，这里将基于圈选图像给出针对性讲解</li></ul>`, demo: true };
   }
 
-  return { grade, essence, tags, templateGen, expand, verdict, ask };
+  // 演示：从笔记生成练习题（摘取原句做判断题，标注演示）
+  function notesGen(raw) {
+    const sentences = String(raw || '')
+      .replace(/<[^>]+>/g, ' ')
+      .split(/[。；\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length >= 15 && s.length <= 90 && /[一-龥]/.test(s) && !/微信|课件|资料/.test(s));
+    const seen = new Set();
+    const picks = [];
+    for (const s of sentences) {
+      const head = s.slice(0, 20);
+      if (seen.has(head)) continue;
+      seen.add(head);
+      picks.push(s);
+      if (picks.length >= 5) break;
+    }
+    if (!picks.length) picks.push('未能在文本中找到可用的知识点语句（演示）');
+    return { data: {
+      bankName: '笔记出题（演示）',
+      questions: picks.map((s, i) => ({
+        number: String(i + 1), chapter: '', stem: `判断：「${s}」这一表述与原文一致。`,
+        options: ['A. 正确', 'B. 错误'], answer: 'A',
+        analysis: `原文语句：「${s}」。此为演示模式的摘句判断题，配置真实 AI 后将生成规范的单选/多选题。`,
+        knowledge: '',
+      })),
+    }, demo: true };
+  }
+
+  return { grade, essence, tags, templateGen, expand, verdict, ask, notesGen };
 })();

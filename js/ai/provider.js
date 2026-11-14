@@ -52,7 +52,7 @@ window.AI = (() => {
     });
   }
 
-  async function callChat({ key, filled, images, model, temperature }) {
+  async function callChat({ key, filled, images, model, temperature, maxTokens }) {
     const cfg = Store.config.ai;
     const content = images && images.length
       ? [{ type: 'text', text: filled }, ...images.map(u => ({ type: 'image_url', image_url: { url: u } }))]
@@ -66,6 +66,7 @@ window.AI = (() => {
       messages,
       model: useModel,
       temperature: temperature ?? cfg.temperature,
+      ...(maxTokens ? { max_tokens: maxTokens } : {}),
     });
     return resp.content;
   }
@@ -136,14 +137,19 @@ window.AI = (() => {
     return { html: cleanHtml(raw), demo: false };
   }
 
-  // 题库智能解析：真实 API 走大模型；未配置时回退本地规则解析器（由 quiz 视图注入 window.LocalBankParser）
-  async function bankParse(raw) {
+  // 题库智能解析 / 从笔记出题：真实 API 走大模型；未配置时回退本地规则解析器（quiz 视图注入 window.LocalBankParser）
+  async function bankParse(raw, opts = {}) {
+    const mode = opts.mode === 'generate' ? 'generate' : 'parse';
     if (!live()) {
+      if (mode === 'generate') return Mock.notesGen(raw);
       if (!window.LocalBankParser) throw new Error('本地解析器未就绪');
       return { data: window.LocalBankParser.parse(raw), demo: true };
     }
-    const prompt = fill(Store.prompt('bankParse'), { raw: String(raw).slice(0, 60000) });
-    const data = extractJson(await callChat({ key: 'bankParse', filled: prompt, temperature: 0.2 }));
+    const key = mode === 'generate' ? 'notesGen' : 'bankParse';
+    const maxChars = opts.maxChars || 60000;
+    const prompt = fill(Store.prompt(key), { raw: String(raw).slice(0, maxChars) });
+    // 出题/解析输出体量大（长 JSON），放宽输出上限，防止思考型模型截断
+    const data = extractJson(await callChat({ key, filled: prompt, temperature: 0.2, maxTokens: 16000 }));
     if (!Array.isArray(data.questions)) throw new Error('解析返回格式异常：缺少 questions 数组');
     return { data, demo: false };
   }

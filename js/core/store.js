@@ -55,19 +55,20 @@ window.Store = {
   },
 
   // ---------- 通用集合操作 ----------
+  // 增删改立即落盘（本地全量 POST <5ms），避免页面关闭时丢失；富文本输入等高频路径仍走 debounced save()
   coll(name) { return (this.db[name] ||= []); },
-  insert(name, obj) { this.coll(name).unshift(obj); this.save(); return obj; },
+  insert(name, obj) { this.coll(name).unshift(obj); this.saveNow(); return obj; },
   update(name, id, patch) {
     const item = this.coll(name).find(x => x.id === id);
     if (item) Object.assign(item, patch, { updatedAt: U.now() });
-    this.save();
+    this.saveNow();
     return item;
   },
   remove(name, id) {
     const c = this.coll(name);
     const i = c.findIndex(x => x.id === id);
     if (i >= 0) c.splice(i, 1);
-    this.save();
+    this.saveNow();
   },
   find(name, id) { return this.coll(name).find(x => x.id === id); },
 };
