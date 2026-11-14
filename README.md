@@ -4,7 +4,7 @@
 
 **HTML 原生笔记 · 截图圈选批注 · 刷题系统 · 错题/好题/模板本 · 做题模板库（相似度自动归类）**
 
-*零第三方依赖：后端为 Python 标准库，前端为 vanilla JS —— 无框架、无构建、无 pip/npm 安装*
+*后端纯 Python 标准库零依赖；前端 vanilla JS + 本地内置渲染库（KaTeX / markdown-it / DOMPurify / highlight.js），无框架、无构建、无需 pip/npm 安装*
 
 [![Python](https://img.shields.io/badge/python-3.8%2B-2d6a4f?logo=python&logoColor=white)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-bc4b2a)](#)
@@ -28,9 +28,11 @@
 ## ✨ 功能特性
 
 ### 📝 笔记 —— HTML 原生富文档
-- 富文本一切皆可用：表格、折叠块、代码块、待办清单、引用、分割线
+- 富文本一切皆可用：表格、折叠块、代码块（语法高亮）、待办清单、引用、分割线
 - 行内 / 块级 **KaTeX 数学公式**（本地 vendor，离线渲染）
+- **📄 导入 MD 文件**一键生成新笔记（markdown-it 规范渲染：表格 / 代码块 / 嵌套列表 / 公式原样保留）
 - 插入图片（上传 / Ctrl+V 粘贴）、插入批注产物、粘贴 Markdown 自动转富文本
+- **右键选中文本 → AI 提问**，回答可一键追加到当前笔记（详见下方「AI 助手」）
 - 一键导出为独立 HTML 文件（直接分享、浏览器即开）
 
 ### ✂️ 截图批注
@@ -64,9 +66,15 @@
 3. **阈值卡控 + 人工覆写**——无论裁决结果如何，都可归并到任一候选或坚持新建，覆写记入判定历史
 4. **判定历史可回溯**——每个模板记录历次判定的分数与裁决
 
+### 🧠 AI 助手（右键提问）
+在笔记、题目、批改报告、三本条目中**选中任意文本并右键**，即可：
+- 「就选中内容提问…」——输入问题（或「让 AI 解释这段」一键直问），AI 结合选中文本作答
+- 回答以富 HTML 呈现（表格 / 公式 / 代码高亮），**「➕ 追加到笔记」**一键把问答块写入当前笔记（无笔记则自动新建）
+
 ### 🤖 大模型接入（可调参）
-- 任何 **OpenAI 兼容接口**：DeepSeek / 通义 compatible-mode / OpenAI / Moonshot / GLM…
-- **8 组提示词全部可视化编辑**（批改 / 本质思路 / 标签 / 模板生成 / 扩容 / 相似度裁决 / 圈选提问 / 题库解析），即改即生效
+- 任何 **OpenAI 兼容接口**：DeepSeek / 通义 compatible-mode / OpenAI / Moonshot / GLM / Dots…
+- 认证方式可选 `Authorization: Bearer`（OpenAI 标准）或 `api-key` 请求头（Dots 等平台）
+- **10 组提示词全部可视化编辑**（批改 / 本质思路 / 标签 / 模板生成 / 扩容 / 相似度裁决 / 圈选提问 / 题库解析 / 从笔记出题 / 右键提问），即改即生效
 - 相似度权重与阈值滑杆可调（误归并 → 提高置信阈值；漏归并 → 提高关键词权重）
 - 未配置 API 时自动进入**演示模式**：全流程离线可走通，输出明确标注 ⚑
 - 所有 AI 产物经**白名单消毒器**过滤后渲染（防提示注入 XSS）
@@ -103,7 +111,7 @@ python3 server.py
 ├── js/core/             # api / store / sanitize(白名单消毒) / md / katex / ui / app
 ├── js/ai/               # prompts(可编辑提示词) / provider(AI门面) / mock(演示) / similarity(相似度引擎)
 ├── js/views/            # notes / annotator / quiz / books / templates / settings / help
-├── vendor/              # katex（公式）、html2canvas（截题），已内置
+├── vendor/              # 本地内置库：katex / html2canvas / markdown-it / purify / highlight，已内置
 ├── sample/              # 示例题库
 ├── tests/e2e.js         # Playwright 端到端测试（62 项断言）
 └── data/                # 运行时数据（自动生成，不入库）
@@ -113,7 +121,8 @@ python3 server.py
 
 ```bash
 npm i playwright && npx playwright install chromium   # 测试环境
-node tests/e2e.js                                     # 18 组场景 · 62 项断言
+node tests/e2e.js          # 18 组场景 · 62 项断言（演示模式全流程）
+node tests/test-real-ai.mjs import|features|templates|vision|ask   # 真实 AI 分阶段测试（先在设置页配好 API）
 ```
 
 覆盖：应用加载、笔记编辑、XSS 消毒抽查、相似度引擎单元检查、题库导入、作答（文本/手写）、演示 AI 批改、三本归档、模板新建路径、**高相似题归并路径**（召回→diff→裁决→归并→扩容）、批注绘制/撤销/导出、圈选提问、提示词编辑、数据持久化。

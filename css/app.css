@@ -426,6 +426,25 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
 /* katex 降级提示 */
 .katex-src { background: #fffbe8; outline: 1px dashed #e5d5ab; }
 
+/* ---------- 右键 AI 提问 ---------- */
+.ctx-menu {
+  position: fixed; z-index: 260; min-width: 210px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow-lg); padding: 4px;
+}
+.ctx-menu button {
+  display: block; width: 100%; text-align: left; padding: 8px 14px;
+  border: none; background: none; cursor: pointer; font-size: 14px;
+  color: var(--ink); border-radius: 6px; font-family: var(--font);
+}
+.ctx-menu button:hover { background: var(--primary-soft); color: var(--primary); }
+.ctx-quote {
+  margin: 0 0 10px; padding: 8px 12px; font-size: 13px; color: var(--ink-2);
+  background: var(--surface-2); border-left: 3px solid var(--line-2); border-radius: 0 6px 6px 0;
+}
+.rich .ctx-qa { background: var(--primary-soft); }
+.rich .ctx-qa summary { color: var(--primary); }
+
 /* 响应式 */
 @media (max-width: 900px) {
   .notes-layout, .quiz-layout, .annot-main { grid-template-columns: 1fr; }

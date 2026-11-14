@@ -14,7 +14,8 @@ Views.notes = {
         <div class="notes-editor">
           <div class="note-editor-head">
             <input class="note-title-input" id="note-title" placeholder="笔记标题…">
-            <button class="btn btn-ghost btn-sm" id="note-md-import" title="把 Markdown 文本转换为富文本块">MD 导入</button>
+            <button class="btn btn-ghost btn-sm" id="note-md-import" title="把 Markdown 文本转换为富文本块追加到笔记">MD 粘贴转换</button>
+            <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">📄 导入文件</button>
             <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
             <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">导出 HTML</button>
           </div>
@@ -106,6 +107,32 @@ Views.notes = {
       editor.insertAdjacentHTML('beforeend', Sanitize.html(MD.toHtml(text)));
       Ktx.renderMath(editor);
       debouncedSave();
+    };
+
+    // ---------- 导入 MD 文件生成新笔记 ----------
+    container.querySelector('#note-import-md').onclick = () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.md,.markdown,.txt,text/plain,text/markdown';
+      input.onchange = async () => {
+        const f = input.files[0];
+        if (!f) return;
+        if (f.size > 5 * 1024 * 1024) return UI.toast('文件超过 5MB 限制', 'warn');
+        const text = await f.text();
+        const html = Sanitize.html(MD.toHtml(text));
+        if (!U.stripHtml(html)) return UI.toast('文件内容为空或无法解析', 'warn');
+        const title = (text.match(/^#\s+(.+)$/m)?.[1]
+          || text.match(/^##?\s+(.+)$/m)?.[1]
+          || f.name.replace(/\.(md|markdown|txt)$/i, '')).trim().slice(0, 40) || f.name;
+        const n = Store.insert('notes', {
+          id: U.uid('note'), title, content: html, createdAt: U.now(), updatedAt: U.now(),
+        });
+        this.currentId = n.id;
+        this.open(n.id, editor, titleInput);
+        Ktx.renderMath(editor);
+        UI.toast(`已导入「${title}」（约 ${Math.round(text.length / 100) / 10} 千字）`, 'success');
+      };
+      input.click();
     };
 
     // ---------- 插入批注产物 ----------

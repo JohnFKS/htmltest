@@ -49,6 +49,18 @@ window.Ktx = (() => {
       return;
     }
     walk(el);
+    highlight(el);
+  }
+
+  /** 代码块语法高亮（highlight.js vendor 存在时） */
+  function highlight(el) {
+    if (!window.hljs || !el.querySelectorAll) return;
+    try {
+      el.querySelectorAll('pre code:not([data-hl])').forEach(b => {
+        hljs.highlightElement(b);
+        b.dataset.hl = '1';
+      });
+    } catch (e) { /* 高亮失败不影响内容 */ }
   }
 
   function load() {

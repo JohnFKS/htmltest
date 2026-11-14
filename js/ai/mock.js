@@ -153,5 +153,14 @@ window.Mock = (() => {
     }, demo: true };
   }
 
-  return { grade, essence, tags, templateGen, expand, verdict, ask, notesGen };
+  // 演示：右键选中文本答疑
+  function ctxAsk(selection, question) {
+    return { html: `${badge}
+<h4>演示回答</h4>
+<p>针对选中文本「${U.esc(String(selection || '').slice(0, 60))}」的问题「${U.esc(String(question || '').slice(0, 40))}」：</p>
+<ul><li>演示模式不调用真实大模型，此处为占位回答</li>
+<li>配置真实 AI 后，这里将基于选中文本给出针对性讲解（HTML 报告，支持表格与公式）</li></ul>`, demo: true };
+  }
+
+  return { grade, essence, tags, templateGen, expand, verdict, ask, notesGen, ctxAsk };
 })();

@@ -67,8 +67,17 @@ window.Sanitize = (() => {
   }
 
   return {
-    /** 返回消毒后的 HTML 字符串 */
+    /** 返回消毒后的 HTML 字符串（优先 DOMPurify，缺失时用内置白名单实现） */
     html(str = '') {
+      if (window.DOMPurify) {
+        return DOMPurify.sanitize(String(str), {
+          ALLOWED_TAGS: [...ALLOWED_TAGS],
+          ALLOWED_ATTR: ['class', 'href', 'title', 'target', 'src', 'alt', 'width', 'height',
+            'colspan', 'rowspan', 'scope', 'type', 'checked', 'disabled', 'start', 'open', 'data-tex'],
+          ALLOW_DATA_ATTR: false,
+          ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+        });
+      }
       const holder = document.createElement('div');
       holder.innerHTML = String(str);
       clean(holder);

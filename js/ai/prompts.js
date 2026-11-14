@@ -4,7 +4,7 @@ window.Prompts = (() => {
   const HTML_RULE = `【输出格式】只输出一段受控 HTML 片段，不要输出 markdown、不要代码围栏、不要输出 <!DOCTYPE> 或 <html> 等文档级标签。
 允许的标签：p, h4, h5, h6, ul, ol, li, table, thead, tbody, tr, th, td, b, strong, i, em, u, s, mark, code, pre, blockquote, hr, br, span, details, summary。
 可用样式 class：hl-good（正确/优点，绿）、hl-warn（注意/欠佳，黄）、hl-bad（错误/问题，红）、muted（弱化灰）、tag（小标签）。
-数学公式用 $...$（行内）或 $$...$$（独立成段）书写。禁止 script/style/img/a 等任何其他标签，禁止 id、事件属性。`;
+数学公式用 $...$（行内）或 $$...$$（独立成段）书写。表格一律用 <table> 标签，加粗一律用 <strong> 标签——禁止任何 markdown 语法标记（如 **加粗**、|表格|、# 标题）。禁止 script/style/img/a 等任何其他标签，禁止 id、事件属性。`;
 
   const JSON_RULE = `【输出格式】只输出一个合法 JSON 对象，不要 markdown 代码围栏，不要多余解释文字。`;
 
@@ -20,6 +20,7 @@ window.Prompts = (() => {
       ask:        { name: '圈选提问',          desc: '针对截图圈选区域的多模态答疑（HTML）' },
       bankParse:  { name: '题库智能解析',      desc: '把混乱的题库文本按结构拆成题目数组（JSON）' },
       notesGen:   { name: '从笔记出题',        desc: '把讲义/笔记内容生成成练习题（JSON）' },
+      ctxAsk:     { name: '右键 AI 提问',      desc: '针对选中文本的贴身答疑（HTML）' },
     },
 
     defaults: {
@@ -188,6 +189,22 @@ ${JSON_RULE}
 
 ${JSON_RULE}
 输出 schema：{"bankName":"题库名（取文首标题）", "questions":[{"number":"","chapter":"","stem":"","options":["A. ","B. ","C. ","D. "],"answer":"","analysis":"","knowledge":""}]}`,
+
+      ctxAsk: `你是贴身学习助教。用户在学习笔记、题目或 AI 报告中选中了一段文本，并就它提出了问题。
+
+【选中的文本】
+{selection}
+
+【用户的问题】
+{question}
+
+【要求】
+1. 先直接回答问题；选中文本是概念/步骤/结论时，紧扣它解释；
+2. 可以补充背景知识，但与选中文本无关的内容不要展开；
+3. 数学公式用 $...$ 书写；对比类内容优先用表格呈现；代码用 code/pre；
+4. 正文紧凑（300 字内），深入细节放 details 折叠块里。
+
+${HTML_RULE}`,
     },
   };
 })();

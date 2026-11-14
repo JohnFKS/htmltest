@@ -31,11 +31,94 @@ window.AI = (() => {
     return JSON.parse(t.slice(start, end + 1));
   }
 
-  // 清理 markdown 围栏后交给消毒器
+  // 把 AI 输出 HTML 里残留的 markdown 表格/代码围栏/加粗标记转成真 HTML
+  function convertMdBlocks(html) {
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+
+    // 1) 行内残留：**加粗** → <strong>（只处理文本节点，不碰已有标签）
+    const walkText = node => {
+      for (const child of [...node.childNodes]) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          if (child.textContent.includes('**')) {
+            const frag = document.createElement('span');
+            frag.innerHTML = U.esc(child.textContent)
+              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            child.replaceWith(...frag.childNodes);
+          }
+        } else if (child.nodeType === Node.ELEMENT_NODE && !['PRE', 'CODE'].includes(child.tagName)) {
+          walkText(child);
+        }
+      }
+    };
+    walkText(holder);
+
+    // 2) 块级残留：markdown 表格（含被压缩成单行/列数不齐的畸形表格）与代码围栏
+    for (const el of [...holder.querySelectorAll('p, li, td, div, blockquote, h4, h5, h6, span')]) {
+      if (el.querySelector('table, pre, ul, ol, blockquote')) continue;
+      // 强调标签往返为 markdown 标记，避免 textContent 抹掉格式（表格单元格里的加粗仍能保留）
+      const raw = (el.innerHTML || '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<(strong|b)>([\s\S]*?)<\/\1>/gi, '**$2**')
+        .replace(/<(em|i)>([\s\S]*?)<\/\1>/gi, '*$2*')
+        .replace(/<code>([\s\S]*?)<\/code>/gi, '`$2`');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = raw;
+      const text = tmp.textContent || '';
+      const pipeCount = (text.match(/\|/g) || []).length;
+      const isTable = pipeCount >= 4 && /\|[^|]*\|/.test(text);
+      const isFence = /```/.test(text);
+      if (!isTable && !isFence) continue;
+      // 先试 markdown-it 原生解析；失败（畸形表格）再用 token 重建
+      let frag = document.createElement('div');
+      frag.innerHTML = MD.toHtml(text);
+      if (!frag.querySelector('table') && isTable) {
+        const rebuilt = rebuildTable(text);
+        if (rebuilt) {
+          frag = document.createElement('div');
+          frag.innerHTML = MD.toHtml(rebuilt);
+        }
+      }
+      if (frag.querySelector('table, pre')) el.replaceWith(...frag.childNodes);
+    }
+    return holder.innerHTML;
+  }
+
+  // 从畸形 markdown 表格文本重建规范表格：
+  // 用「|」切 token，定位连续的纯分隔符 token 行，空 token 即行边界（适配 LLM 压缩成单行的表格）
+  function rebuildTable(text) {
+    const tokens = text.split('|').map(t => t.trim());
+    let s = -1, e = -1;
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i] && /^[-: ]+$/.test(tokens[i]) && tokens[i].includes('-')) {
+        if (s < 0) s = i;
+        e = i + 1;
+      } else if (s >= 0) break;
+    }
+    if (s < 0 || e - s < 2) return null;
+    const header = tokens.slice(0, s).filter(t => t !== '');
+    const cols = Math.max(header.length, e - s);
+    const rest = tokens.slice(e);
+    const rows = [];
+    let cur = [];
+    for (const t of rest) {
+      if (t === '') { if (cur.length) { rows.push(cur); cur = []; } }
+      else cur.push(t);
+    }
+    if (cur.length) rows.push(cur);
+    if (!header.length || !rows.length) return null;
+    const build = cells => '|' + Array.from({ length: cols }, (_, i) => ` ${cells[i] || ''} `).join('|') + '|';
+    return [build(header), build(Array(cols).fill('---')),
+      ...rows.map(r => build(r))].join('\n');
+  }
+
+  // 清理 markdown 围栏、转换残留 markdown 块后交给消毒器
   function cleanHtml(text) {
     let t = String(text || '').trim();
-    const fence = t.match(/```(?:html)?\s*([\s\S]*?)```/);
-    if (fence) t = fence[1].trim();
+    // 仅当整段被代码围栏包裹时剥离（内嵌的代码围栏保留给 convertMdBlocks 渲染）
+    const wrapped = t.match(/^```[a-z]*\s*\n?([\s\S]*?)\n?\s*```$/);
+    if (wrapped) t = wrapped[1].trim();
+    try { t = convertMdBlocks(t); } catch (e) { /* 转换失败保底原文 */ }
     return Sanitize.html(t);
   }
 
@@ -154,5 +237,14 @@ window.AI = (() => {
     return { data, demo: false };
   }
 
-  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse };
+  // 右键选中文本提问（学习助教，基于选中文本作答，输出受控 HTML）
+  async function ctxAsk({ selection, question }) {
+    if (!live()) return Mock.ctxAsk(selection, question);
+    const prompt = fill(Store.prompt('ctxAsk'), {
+      selection: String(selection).slice(0, 1500), question: String(question || '请解释这段内容'),
+    });
+    return { html: cleanHtml(await callChat({ key: 'ctxAsk', filled: prompt })), demo: false };
+  }
+
+  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse, ctxAsk };
 })();

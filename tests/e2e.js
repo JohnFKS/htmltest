@@ -370,7 +370,7 @@ D. 96
   console.log('== 15. 设置页 ==');
   await page.click('#nav a[data-view="settings"]');
   await page.waitForTimeout(400);
-  ok(await page.locator('.prompt-item').count() === 8, '8 组提示词可编辑');
+  ok(await page.locator('.prompt-item').count() === 10, '10 组提示词可编辑');
   await page.locator('.prompt-item[data-key="grade"] .prompt-head').click(); // 展开面板
   await page.locator('.prompt-item [data-ta="grade"]').fill('自定义批改提示词 E2E');
   await page.locator('.prompt-item [data-save="grade"]').click();

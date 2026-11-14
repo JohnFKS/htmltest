@@ -1,6 +1,15 @@
-// 轻量 Markdown → HTML 转换器（用于题库导入渲染、MD 粘贴转 HTML）
+// Markdown → HTML 转换器
+// 优先使用本地 vendor 的 markdown-it（CommonMark + GFM 表格，健壮）；缺失时降级为内置轻量实现
 // 数学公式 $...$ / $$...$$ 保持原文输出，由 katex.js 统一扫描渲染
 window.MD = (() => {
+  let _mdit = null;
+  function mdit() {
+    if (!_mdit && window.markdownit) {
+      _mdit = window.markdownit({ html: false, linkify: true, breaks: true });
+    }
+    return _mdit;
+  }
+
   function inline(s) {
     s = U.esc(s);
     // ![alt](src) 图片
@@ -89,6 +98,8 @@ window.MD = (() => {
   return {
     /** MD 文本 → HTML 片段（内联数学公式保持原文，交给 KaTeX 渲染） */
     toHtml(mdText = '') {
+      const m = mdit();
+      if (m) return m.render(String(mdText));
       return block(String(mdText).replace(/\r\n?/g, '\n').split('\n'), []);
     },
     /** 检测文本是否像 Markdown（用于粘贴自动转换） */
