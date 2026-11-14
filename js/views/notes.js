@@ -50,6 +50,8 @@ Views.notes = {
       if (!n) return;
       edEl.innerHTML = n.content || '';
       tEl.value = n.title || '';
+      // 切换笔记时清空撤销历史，同步基线快照
+      undoStack.length = 0; redoStack.length = 0; lastSnap = takeSnap();
       this.updateStatus();
       renderList();
     };
@@ -71,9 +73,48 @@ Views.notes = {
       if (item) item.textContent = titleInput.value.trim() || '未标题';
     };
     const debouncedSave = U.debounce(saveCurrent, 900);
-    editor.addEventListener('input', () => { debouncedSave(); this.updateStatus(); });
-    titleInput.addEventListener('input', debouncedSave);
+    // ---------- 撤销/重做（快照式：程序化插入、防抖保存都不会破坏历史） ----------
+    const undoStack = [], redoStack = [];
+    let lastSnap = null;
+    const takeSnap = () => ({ html: editor.innerHTML, title: titleInput.value });
+    const syncSnap = () => {
+      const cur = takeSnap();
+      if (lastSnap && (cur.html !== lastSnap.html || cur.title !== lastSnap.title)) {
+        undoStack.push(lastSnap);
+        if (undoStack.length > 100) undoStack.shift();
+        redoStack.length = 0;
+      }
+      lastSnap = cur;
+    };
+    const pushUndoSoon = U.debounce(syncSnap, 350);
+    const restoreSnap = s => {
+      editor.innerHTML = s.html;
+      titleInput.value = s.title;
+      lastSnap = s;
+      Ktx.renderMath(editor);
+      debouncedSave();
+      this.updateStatus();
+    };
+    const doUndo = () => {
+      if (!undoStack.length) return UI.toast('没有可撤销的编辑');
+      redoStack.push(lastSnap);
+      restoreSnap(undoStack.pop());
+    };
+    const doRedo = () => {
+      if (!redoStack.length) return UI.toast('没有可重做的编辑');
+      undoStack.push(lastSnap);
+      restoreSnap(redoStack.pop());
+    };
+    this._undo = { undo: doUndo, redo: doRedo, counts: () => ({ u: undoStack.length, r: redoStack.length }), sync: syncSnap };
+
+    editor.addEventListener('input', () => { pushUndoSoon(); debouncedSave(); this.updateStatus(); });
+    titleInput.addEventListener('input', () => { pushUndoSoon(); debouncedSave(); });
     titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') editor.focus(); });
+    editor.addEventListener('keydown', e => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); }
+      else if (mod && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); doRedo(); }
+    });
 
     // ---------- 粘贴：图片上传 / MD 自动转富文本 ----------
     editor.addEventListener('paste', async e => {
@@ -98,7 +139,7 @@ Views.notes = {
     });
 
     // ---------- 工具栏 ----------
-    this.buildToolbar(container.querySelector('#editor-toolbar'), editor, debouncedSave);
+    this.buildToolbar(container.querySelector('#editor-toolbar'), editor, debouncedSave, { undo: doUndo, redo: doRedo });
 
     // ---------- MD 导入 ----------
     container.querySelector('#note-md-import').onclick = async () => {
@@ -176,7 +217,7 @@ code{font-family:Consolas,monospace}img{max-width:100%}</style></head>
     el.textContent = `已自动保存 · ${U.fmt(n?.updatedAt || n?.createdAt)} · 约 ${(U.stripHtml(n?.content || '').length / 1000).toFixed(1)} 千字`;
   },
 
-  buildToolbar(bar, editor, save) {
+  buildToolbar(bar, editor, save, undoApi = {}) {
     const insertHTML = html => {
       editor.focus();
       document.execCommand('insertHTML', false, html);
@@ -184,6 +225,9 @@ code{font-family:Consolas,monospace}img{max-width:100%}</style></head>
       save();
     };
     const tools = [
+      { icon: '↩', title: '撤销 (Ctrl+Z)', cmd: undoApi.undo || (() => {}) },
+      { icon: '↪', title: '重做 (Ctrl+Y)', cmd: undoApi.redo || (() => {}) },
+      { sep: true },
       { icon: 'B', title: '加粗', cmd: () => document.execCommand('bold') },
       { icon: 'I', title: '斜体', cmd: () => document.execCommand('italic') },
       { icon: 'U', title: '下划线', cmd: () => document.execCommand('underline') },

@@ -11,7 +11,7 @@ window.Sanitize = (() => {
   // 直接丢弃（含子树）的标签
   const DROP_TAGS = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'form', 'button', 'video', 'audio', 'svg', 'math', 'base', 'template']);
   const ALLOWED_ATTRS = {
-    '*': ['class'],
+    '*': ['class', 'style', 'border'],
     a: ['href', 'title', 'target'],
     img: ['src', 'alt', 'width', 'height'],
     td: ['colspan', 'rowspan'],
@@ -52,6 +52,10 @@ window.Sanitize = (() => {
           const v = safeUrl(attr.value);
           if (!v) { node.removeAttribute(attr.name); continue; }
           node.setAttribute(name, v);
+        } else if (name === 'style') {
+          const safe = filterStyle(attr.value);
+          if (!safe) node.removeAttribute(attr.name);
+          else node.setAttribute('style', safe);
         } else if (name === 'class') {
           if (!CLASS_RE.test(attr.value)) node.removeAttribute(name);
         } else if (name === 'target') {
@@ -66,6 +70,20 @@ window.Sanitize = (() => {
     }
   }
 
+  // 危险内联 CSS 过滤（允许 OCR 表格的排版样式，拦截定位劫持与外链）
+  const DANGEROUS_CSS = /position\s*:\s*(fixed|absolute)|url\s*\(|javascript:|expression\s*\(|@import/i;
+  const filterStyle = v => (v && !DANGEROUS_CSS.test(v)) ? String(v) : '';
+
+  if (window.DOMPurify) {
+    DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+      if (data.attrName === 'style') {
+        const safe = filterStyle(data.attrValue);
+        if (!safe) data.keep = false;
+        else data.attrValue = safe;
+      }
+    });
+  }
+
   return {
     /** 返回消毒后的 HTML 字符串（优先 DOMPurify，缺失时用内置白名单实现） */
     html(str = '') {
@@ -73,7 +91,8 @@ window.Sanitize = (() => {
         return DOMPurify.sanitize(String(str), {
           ALLOWED_TAGS: [...ALLOWED_TAGS],
           ALLOWED_ATTR: ['class', 'href', 'title', 'target', 'src', 'alt', 'width', 'height',
-            'colspan', 'rowspan', 'scope', 'type', 'checked', 'disabled', 'start', 'open', 'data-tex'],
+            'colspan', 'rowspan', 'scope', 'type', 'checked', 'disabled', 'start', 'open', 'data-tex',
+            'style', 'border'],
           ALLOW_DATA_ATTR: false,
           ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
         });

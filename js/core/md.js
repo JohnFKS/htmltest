@@ -5,7 +5,9 @@ window.MD = (() => {
   let _mdit = null;
   function mdit() {
     if (!_mdit && window.markdownit) {
-      _mdit = window.markdownit({ html: false, linkify: true, breaks: true });
+      // html: true —— 放行源文档中的原生 HTML（OCR 笔记的 <table> 等），
+      // 渲染结果统一经过 Sanitize 白名单消毒，脚本/事件属性不会进入 DOM
+      _mdit = window.markdownit({ html: true, linkify: true, breaks: true });
     }
     return _mdit;
   }
