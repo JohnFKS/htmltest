@@ -53,6 +53,7 @@ DEFAULT_CONFIG = {
         "chatModel": "",    # 文本对话模型
         "visionModel": "",  # 多模态模型（批改手写/照片、圈选提问）
         "embedModel": "",   # 可选，相似度精排
+        "authStyle": "bearer",  # bearer: Authorization: Bearer；apikey: api-key 头（Dots 等平台）
         "temperature": 0.4,
         "maxTokens": 4096,
     },
@@ -113,10 +114,12 @@ def proxy_ai(payload: dict, cfg: dict, kind: str) -> dict:
     if not ai.get("baseUrl") or not ai.get("apiKey"):
         raise RuntimeError("AI API 未配置：请在「设置」页填写接口地址与 API Key")
     url = ai_endpoint(ai["baseUrl"], kind)
-    headers = {
-        "Authorization": f"Bearer {ai['apiKey']}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json"}
+    if ai.get("authStyle") == "apikey":
+        # 部分平台（如 Dots）使用自定义 api-key 头认证
+        headers["api-key"] = ai["apiKey"]
+    else:
+        headers["Authorization"] = f"Bearer {ai['apiKey']}"
     if kind == "chat":
         body = {
             "model": payload.get("model") or ai.get("chatModel") or "",
