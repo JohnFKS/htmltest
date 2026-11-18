@@ -50,6 +50,9 @@
 | 删除永久保存版本 | 通过，确认后可删除 | `screenshots/30-delete-pinned.png` |
 | 选中文本提问保留锚点 | 通过，`context.anchor` 已持久化 | `screenshots/31-ask-with-anchor.png` |
 | AI 批注插入原文下方 | 通过，插入目标段落之后；原文无 `<mark>` 包裹；CSS Highlight 生效 | `screenshots/32-annotation-inserted.png` |
+| 批注默认悬浮折叠 | 通过，卡片默认 `display:none`，只显示标签 | `screenshots/33-hover-collapsed.png` |
+| 悬浮展开与富文本渲染 | 通过，展开后表格 1 个、KaTeX 公式 2 个，与笔记/对话栏同款样式 | `screenshots/34-hover-expanded.png` |
+| 悬浮内容直接编辑 | 通过，修改后自动写入笔记，表格结构保留 | `screenshots/35-hover-edited.png` |
 
 ## Issues
 

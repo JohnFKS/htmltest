@@ -162,6 +162,13 @@ window.AI = (() => {
     // 仅当整段被代码围栏包裹时剥离（内嵌的代码围栏保留给 convertMdBlocks 渲染）
     const wrapped = t.match(/^```[a-z]*\s*\n?([\s\S]*?)\n?\s*```$/);
     if (wrapped) t = wrapped[1].trim();
+    // 模型常直接输出裸 Markdown（含 GFM 表格），先整体转成 HTML 再做残留修复
+    const hasAnyTag = /<[a-z][\s\S]*>/i.test(t);
+    const hasTable = /<table\b/i.test(t);
+    const mdTable = /(^|\n)\s*\|.*\|\s*(\n|$)/.test(t) && /(^|\n)\s*\|?[\s:|-]+\|[\s:|-]*\s*(\n|$)/.test(t);
+    if (!hasAnyTag || (mdTable && !hasTable)) {
+      try { t = MD.toHtml(t); } catch (e) { /* 转换失败保底原文 */ }
+    }
     try { t = convertMdBlocks(t); } catch (e) { /* 转换失败保底原文 */ }
     return Sanitize.html(t);
   }

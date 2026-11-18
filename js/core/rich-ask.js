@@ -146,10 +146,14 @@ window.RichAsk = (() => {
     const q = U.asText(question || '');
     const quote = U.asText(selText || '');
     const safeAnswer = Sanitize.html(U.asText(answerHtml || ''));
-    const block = `<details open class="ai-annotation ctx-qa"><summary>🤖 AI 批注：${U.esc(q.slice(0, 40))}</summary>
-      ${quote ? `<blockquote>${U.esc(quote.slice(0, 200))}</blockquote>` : ''}
-      ${safeAnswer}
-      <p class="muted" style="font-size:12px">— AI 生成于 ${U.fmt(U.now())}，关键结论请自行校验</p></details><p></p>`;
+    const block = `<div class="ai-annotation" tabindex="0">
+      <div class="ai-annotation-trigger"><span class="ai-annotation-chip">🤖 AI 批注</span><span class="ai-annotation-topic">${U.esc(q.slice(0, 36))}</span><span class="ai-annotation-caret">▾</span></div>
+      <div class="ai-annotation-card" contenteditable="true">
+        <div class="ai-annotation-quote">引用：${U.esc(quote.slice(0, 200))}</div>
+        <div class="ai-annotation-answer ai-report">${safeAnswer}</div>
+        <div class="ai-annotation-foot">AI 生成于 ${U.fmt(U.now())} · 悬浮显示 · 可直接修改，移开后自动暂存</div>
+      </div>
+    </div><p></p>`;
     if (!note) {
       note = Store.insert('notes', {
         id: U.uid('note'), title: (q || 'AI 问答').slice(0, 20),

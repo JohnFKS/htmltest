@@ -20,6 +20,7 @@ window.Sanitize = (() => {
     ol: ['start'],
     details: ['open'],
     span: ['class', 'data-tex'],
+    div: ['contenteditable', 'tabindex'],
   };
   const CLASS_RE = /^[a-zA-Z0-9_\- ]{0,120}$/;
   const SAFE_URL_RE = /^(https?:|\/|\.\/|#|data:image\/)/i;
@@ -92,7 +93,7 @@ window.Sanitize = (() => {
           ALLOWED_TAGS: [...ALLOWED_TAGS],
           ALLOWED_ATTR: ['class', 'href', 'title', 'target', 'src', 'alt', 'width', 'height',
             'colspan', 'rowspan', 'scope', 'type', 'checked', 'disabled', 'start', 'open', 'data-tex',
-            'style', 'border'],
+            'contenteditable', 'tabindex', 'style', 'border'],
           ALLOW_DATA_ATTR: false,
           ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
         });

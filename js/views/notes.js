@@ -172,6 +172,19 @@ Views.notes = {
     this._undo = { undo: doUndo, redo: doRedo, counts: () => ({ u: undoStack.length, r: redoStack.length }), sync: syncSnap };
 
     editor.addEventListener('input', () => { pushUndoSoon(); afterEdit(); });
+    editor.addEventListener('click', e => {
+      const trigger = e.target.closest?.('.ai-annotation-trigger');
+      if (!trigger) return;
+      const ann = trigger.closest('.ai-annotation');
+      ann?.classList.toggle('open');
+    });
+    editor.addEventListener('focusout', e => {
+      const card = e.target.closest?.('.ai-annotation-card');
+      if (!card) return;
+      Ktx.renderMath(card);
+      syncSnap();
+      afterEdit();
+    });
     titleInput.addEventListener('input', () => { pushUndoSoon(); afterEdit(); });
     titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') editor.focus(); });
     editor.addEventListener('keydown', e => {
