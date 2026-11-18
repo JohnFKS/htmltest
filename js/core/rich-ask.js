@@ -32,8 +32,8 @@ window.RichAsk = (() => {
     menu = document.createElement('div');
     menu.className = 'ctx-menu';
     menu.innerHTML = `
-      <button data-act="ask">🤖 就选中内容提问…</button>
-      <button data-act="explain">✨ 让 AI 解释这段</button>`;
+      <button data-act="ask">🤖 在右侧对话栏提问…</button>
+      <button data-act="explain">✨ 让 AI 解释这段（右侧）</button>`;
     menu.style.left = Math.min(e.clientX, innerWidth - 240) + 'px';
     menu.style.top = Math.min(e.clientY, innerHeight - 96) + 'px';
     document.body.appendChild(menu);
@@ -44,43 +44,14 @@ window.RichAsk = (() => {
     });
   });
 
-  function openAsk(sel, preset) {
-    let m;
-    m = UI.modal({
-      title: 'AI 提问 · 选中文本',
-      width: 640, raw: true,
-      body: `<blockquote class="ctx-quote">${U.esc(sel.text.slice(0, 300))}${sel.text.length > 300 ? '…' : ''}</blockquote>
-             <textarea class="textarea" id="ctx-q" rows="2" placeholder="想问什么？（留空则默认解释这段内容）">${U.esc(preset)}</textarea>`,
-      actions: [
-        { label: '取消' },
-        { label: '🤖 提问', primary: true, onClick: close => {
-          const q = m.el.querySelector('#ctx-q').value.trim() || '请解释这段内容';
-          close();
-          runAsk(sel, q);
-        } },
-      ],
+  // 选中文本后打开右侧对话栏：解释类预设直接发送，自由提问则聚焦输入框
+  function openAsk(sel, preset = '') {
+    if (!window.NoteChat) return UI.toast('对话栏尚未就绪，请刷新页面', 'error');
+    NoteChat.open({
+      selection: sel.text,
+      newSession: true,
+      ...(preset ? { question: preset, autoSend: true } : { draft: '' }),
     });
-    m.el.querySelector('#ctx-q').focus();
-  }
-
-  async function runAsk(sel, q) {
-    UI.spinner(true, 'AI 思考中…');
-    let result;
-    try { result = await AI.ctxAsk({ selection: sel.text, question: q }); }
-    catch (e) { UI.spinner(false); return UI.toast(e.message, 'error'); }
-    UI.spinner(false);
-    const m = UI.modal({
-      title: 'AI 回答', width: 700, raw: true,
-      body: `<blockquote class="ctx-quote"><b>选中文本：</b>${U.esc(sel.text.slice(0, 200))}${sel.text.length > 200 ? '…' : ''}</blockquote>
-             <blockquote class="ctx-quote"><b>我的问题：</b>${U.esc(q)}</blockquote>
-             <div class="ai-report" id="ctx-answer" style="margin-top:10px">${result.html}</div>`,
-      actions: [
-        { label: '关闭' },
-        { label: '📋 复制回答', onClick: () => { U.copyText(U.stripHtml(result.html)); UI.toast('已复制'); } },
-        { label: '➕ 追加到笔记', primary: true, onClick: () => { appendToNote(q, sel.text, result.html); m.close(); } },
-      ],
-    });
-    Ktx.renderMath(m.bodyEl);
   }
 
   /** 把问答块追加到当前笔记（无当前笔记则新建一篇） */

@@ -251,6 +251,32 @@ window.AI = (() => {
     return { html: cleanHtml(await callChat({ key: 'ctxAsk', filled: prompt })), demo: false };
   }
 
+  // 笔记右侧对话栏：整篇笔记 + 选中文本 + 历史轮次的连续答疑
+  async function ctxChat({ noteTitle, noteText, selection, question, history = [] }) {
+    const q = String(question || '').trim();
+    if (!q) throw new Error('问题不能为空');
+    if (!live()) return Mock.ctxChat({ noteTitle, selection, question: q, history });
+    const system = fill(Store.prompt('ctxChat'), {
+      noteTitle: String(noteTitle || '当前笔记').slice(0, 80),
+      noteText: String(noteText || '').slice(0, 12000) || '（笔记内容为空）',
+      selection: String(selection || '').slice(0, 1500) || '（本轮没有选中文本）',
+      question: q,
+    });
+    const turns = (history || []).slice(-8).map(m => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.role === 'assistant'
+        ? U.stripHtml(m.html || m.text || '').slice(0, 4000)
+        : String(m.text || '').slice(0, 2000),
+    }));
+    const messages = [
+      { role: 'system', content: system },
+      ...turns,
+      { role: 'user', content: q },
+    ];
+    const raw = await Api.aiChat({ messages });
+    return { html: cleanHtml(raw), demo: false };
+  }
+
   // 从题目/本质思路生成复习卡片（JSON：{cards:[{front, back}]}）
   async function makeCards(question, analysis, essenceHtml) {
     if (!live()) return Mock.makeCards(question, analysis);
@@ -275,5 +301,5 @@ window.AI = (() => {
     return { md: t, demo: false };
   }
 
-  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse, ctxAsk, makeCards, pdfNotes };
+  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse, ctxAsk, ctxChat, makeCards, pdfNotes };
 })();

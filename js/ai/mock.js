@@ -163,6 +163,20 @@ window.Mock = (() => {
 <li>配置真实 AI 后，这里将基于选中文本给出针对性讲解（HTML 报告，支持表格与公式）</li></ul>`, demo: true };
   }
 
+  // 演示：笔记右侧多轮对话（承接轮次，明确标注演示）
+  function ctxChat({ selection, question, history = [], noteTitle } = {}) {
+    const turns = history.filter(m => m.role === 'user' || m.role === 'assistant').length;
+    const sel = String(selection || '').trim().slice(0, 80);
+    return { html: `${badge}
+<h4>演示回答 · 第 ${turns + 1} 轮</h4>
+<p>围绕「${U.esc(noteTitle || '当前笔记')}」，你问的是「${U.esc(String(question || '').slice(0, 60))}」${sel ? `，本轮选中文本是「${U.esc(sel)}」` : ''}。</p>
+<ul>
+<li>演示模式不调用真实大模型：这里展示的是多轮对话的排版与上下文占位。</li>
+<li>${turns ? `已识别到前文 ${turns} 条消息；真实 AI 会承接「继续 / 为什么 / 举个例子」这类追问。` : '这是本会话的第一轮；配置真实 AI 后将基于整篇笔记与选中文本作答。'}</li>
+<li>配置真实 AI 后，答案会用表格、公式与折叠块呈现，并支持一键追加回当前笔记。</li>
+</ul>`, demo: true };
+  }
+
   // 演示：从题目生成复习卡片（本地规则，无需 LLM）
   function makeCards(question, analysis) {
     const stem = U.stripHtml(question.stem || '').slice(0, 120);
@@ -186,5 +200,5 @@ ${String(chunk || '').slice(0, 3000)}
 <span class="tag">考点：见原文</span>`, demo: true };
   }
 
-  return { grade, essence, tags, templateGen, expand, verdict, ask, notesGen, ctxAsk, makeCards, pdfNotes };
+  return { grade, essence, tags, templateGen, expand, verdict, ask, notesGen, ctxAsk, ctxChat, makeCards, pdfNotes };
 })();

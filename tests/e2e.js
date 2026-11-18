@@ -22,7 +22,7 @@ async function closeAllModals(page) {
 }
 
 async function resetDB() {
-  const db = { meta: { version: 1, app: 'zhixue-notes' }, notes: [], annots: [], banks: [], records: [], entries: [], templates: [], cards: [], exams: [] };
+  const db = { meta: { version: 1, app: 'zhixue-notes' }, notes: [], annots: [], banks: [], records: [], entries: [], templates: [], cards: [], exams: [], chatSessions: [] };
   const res = await fetch(`${BASE}/api/state`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ db }) });
   return res.ok;
 }
@@ -82,6 +82,52 @@ D. 96
   await page.waitForTimeout(1500);
   ok(await page.evaluate(() => Store.db.notes.length === 2), '笔记已自动保存');
   await shot(page, '02-note-edit.png');
+
+  console.log('== 2b. 笔记助教：选中提问 / 多轮 / 多会话 ==');
+  await page.evaluate(() => {
+    const ed = document.getElementById('editor-area');
+    const p = document.createElement('p');
+    p.textContent = '选中文本用于助教多轮对话测试。';
+    ed.appendChild(p);
+    const r = document.createRange();
+    r.selectNodeContents(p);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    p.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 200, clientY: 200 }));
+  });
+  await page.waitForTimeout(200);
+  ok(await page.locator('.ctx-menu [data-act="ask"]').count() === 1, '选中文本出现右侧提问菜单');
+  await page.click('.ctx-menu [data-act="ask"]');
+  await page.waitForTimeout(300);
+  ok(await page.locator('#note-chat-drawer.open').count() === 1, '右侧对话栏已展开');
+  ok((await page.locator('#chat-context .chat-context-text').textContent()).includes('助教多轮对话测试'), '选中文本已带入引用');
+  ok(await page.evaluate(() => Store.db.chatSessions.length === 1), '已创建第一段会话');
+
+  await page.fill('#chat-input', '这段话的核心是什么？');
+  await page.click('#chat-send');
+  await page.waitForTimeout(400);
+  ok(await page.locator('#chat-messages .chat-msg-user').count() === 1, '首轮用户消息已记录');
+  ok(await page.locator('#chat-messages .chat-msg-ai .ai-report').count() === 1, '演示 AI 回答已渲染');
+
+  await page.fill('#chat-input', '继续举个例子');
+  await page.click('#chat-send');
+  await page.waitForTimeout(400);
+  ok(await page.locator('#chat-messages .chat-msg-user').count() === 2, '第二轮追问已记录');
+  ok(await page.locator('#chat-messages .chat-msg-ai .ai-report').count() === 2, '多轮回答已渲染');
+  ok(await page.evaluate(() => Store.db.chatSessions[0].messages.length === 4), '多轮消息已持久化');
+
+  await page.click('.chat-head [data-act="new"]');
+  await page.waitForTimeout(250);
+  ok(await page.evaluate(() => Store.db.chatSessions.length === 2), '可新建第二段对话');
+  await page.click('.chat-head [data-act="history"]');
+  await page.waitForTimeout(250);
+  ok(await page.locator('.chat-rail .chat-session').count() === 2, '历史会话列表展示两段对话');
+  await page.locator('.chat-rail .chat-session').last().click();
+  await page.waitForTimeout(250);
+  ok(await page.locator('#chat-messages .chat-msg-user').count() === 2, '切换历史会话恢复多轮记录');
+  await page.click('.chat-head [data-act="close"]');
+  ok(await page.locator('#note-chat-drawer.open').count() === 0, '对话栏可收起');
 
   console.log('== 3. XSS 消毒器单元检查 ==');
   const s1 = await page.evaluate(() => Sanitize.html('<img src=x onerror=alert(1)>'));
@@ -372,7 +418,7 @@ D. 96
   console.log('== 15. 设置页 ==');
   await page.click('#nav a[data-view="settings"]');
   await page.waitForTimeout(400);
-  ok(await page.locator('.prompt-item').count() === 12, '12 组提示词可编辑');
+  ok(await page.locator('.prompt-item').count() === 13, '13 组提示词可编辑');
   await page.locator('.prompt-item[data-key="grade"] .prompt-head').click(); // 展开面板
   await page.locator('.prompt-item [data-ta="grade"]').fill('自定义批改提示词 E2E');
   await page.locator('.prompt-item [data-save="grade"]').click();

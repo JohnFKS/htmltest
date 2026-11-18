@@ -8,7 +8,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.8%2B-2d6a4f?logo=python&logoColor=white)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-bc4b2a)](#)
-[![Tests](https://img.shields.io/badge/e2e%20tests-62%2F62%20passing-1d7a5f)](tests/e2e.js)
+[![Tests](https://img.shields.io/badge/e2e%20tests-Playwright-1d7a5f)](tests/e2e.js)
 [![License](https://img.shields.io/badge/license-Apache--2.0-3457d5)](LICENSE)
 
 </div>
@@ -86,13 +86,14 @@
 
 ### 🧠 AI 助手（右键提问）
 在笔记、题目、批改报告、三本条目中**选中任意文本并右键**，即可：
-- 「就选中内容提问…」——输入问题（或「让 AI 解释这段」一键直问），AI 结合选中文本作答
-- 回答以富 HTML 呈现（表格 / 公式 / 代码高亮），**「➕ 追加到笔记」**一键把问答块写入当前笔记（无笔记则自动新建）
+- 「在右侧对话栏提问…」——右侧弹出笔记助教，自动带出选中文本引用，可继续追问；「让 AI 解释这段」则直接发送首问
+- 支持**多轮对话 + 多会话 + 历史会话**：每次选中提问新建一段对话，历史按笔记归档，可切换、重命名、删除；编辑器顶部「💬 笔记助教」可随时唤出
+- 回答以富 HTML 呈现（表格 / 公式 / 代码高亮），**「追加到笔记」**一键把问答块写入当前笔记（无笔记则自动新建），也可复制或重新生成
 
 ### 🤖 大模型接入（可调参）
 - 任何 **OpenAI 兼容接口**：DeepSeek / 通义 compatible-mode / OpenAI / Moonshot / GLM / Dots…
 - 认证方式可选 `Authorization: Bearer`（OpenAI 标准）或 `api-key` 请求头（Dots 等平台）
-- **10 组提示词全部可视化编辑**（批改 / 本质思路 / 标签 / 模板生成 / 扩容 / 相似度裁决 / 圈选提问 / 题库解析 / 从笔记出题 / 右键提问），即改即生效
+- **11 组提示词全部可视化编辑**（批改 / 本质思路 / 标签 / 模板生成 / 扩容 / 相似度裁决 / 圈选提问 / 题库解析 / 从笔记出题 / 右键提问 / 笔记多轮对话），即改即生效
 - 相似度权重与阈值滑杆可调（误归并 → 提高置信阈值；漏归并 → 提高关键词权重）
 - 未配置 API 时自动进入**演示模式**：全流程离线可走通，输出明确标注 ⚑
 - 所有 AI 产物经**白名单消毒器**过滤后渲染（防提示注入 XSS）
@@ -128,7 +129,7 @@ python3 server.py
 ├── index.html           # SPA 壳（笔记 / 批注 / 刷题 / 三本 / 模板库 / 设置 / 帮助）
 ├── design-system.html   # 视觉基准（样式指南）
 ├── css/app.css          # 设计系统（宣纸 + 墨 + 朱批色板）
-├── js/core/             # api / store / sanitize(白名单消毒) / md / katex / ui / app
+├── js/core/             # api / store / sanitize(白名单消毒) / md / katex / ui / rich-ask / note-chat / app
 ├── js/ai/               # prompts(可编辑提示词) / provider(AI门面) / mock(演示) / similarity(相似度引擎)
 ├── js/views/            # notes / annotator / quiz / books / templates / settings / help
 ├── vendor/              # 本地内置库：katex / html2canvas / markdown-it / purify / highlight，已内置
@@ -141,11 +142,11 @@ python3 server.py
 
 ```bash
 npm i playwright && npx playwright install chromium   # 测试环境
-node tests/e2e.js          # 18 组场景 · 62 项断言（演示模式全流程）
+node tests/e2e.js          # Playwright 场景集（演示模式全流程，含笔记助教多轮对话）
 node tests/test-real-ai.mjs import|features|templates|vision|ask   # 真实 AI 分阶段测试（先在设置页配好 API）
 ```
 
-覆盖：应用加载、笔记编辑、XSS 消毒抽查、相似度引擎单元检查、题库导入、作答（文本/手写）、演示 AI 批改、三本归档、模板新建路径、**高相似题归并路径**（召回→diff→裁决→归并→扩容）、批注绘制/撤销/导出、圈选提问、提示词编辑、数据持久化。
+覆盖：应用加载、笔记编辑、XSS 消毒抽查、相似度引擎单元检查、题库导入、作答（文本/手写）、演示 AI 批改、三本归档、模板新建路径、**高相似题归并路径**（召回→diff→裁决→归并→扩容）、批注绘制/撤销/导出、圈选提问、**笔记助教多轮对话与历史会话**、提示词编辑、数据持久化。
 
 ## 💾 数据与备份
 

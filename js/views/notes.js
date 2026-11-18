@@ -18,6 +18,7 @@ Views.notes = {
             <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">📄 导入文件</button>
             <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">📕 导入 PDF</button>
             <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
+            <button class="btn btn-ghost btn-sm" id="note-chat-open" title="打开右侧笔记助教：多轮提问与历史对话">💬 笔记助教</button>
             <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">导出 HTML</button>
           </div>
           <div class="editor-toolbar" id="editor-toolbar"></div>
@@ -55,6 +56,7 @@ Views.notes = {
       undoStack.length = 0; redoStack.length = 0; lastSnap = takeSnap();
       this.updateStatus();
       renderList();
+      window.NoteChat?.onNoteChange?.(id);
     };
 
     // ---------- 新建 ----------
@@ -215,6 +217,12 @@ Views.notes = {
 
     // ---------- 插入批注产物 ----------
     container.querySelector('#note-insert-annot').onclick = () => this.pickAnnot(editor, debouncedSave);
+
+    // ---------- 右侧笔记助教 ----------
+    container.querySelector('#note-chat-open').onclick = () => {
+      if (window.NoteChat) NoteChat.toggle();
+      else UI.toast('对话栏尚未就绪，请刷新页面', 'error');
+    };
 
     // ---------- 导出独立 HTML ----------
     container.querySelector('#note-export').onclick = () => {

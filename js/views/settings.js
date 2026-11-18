@@ -272,7 +272,7 @@ Views.settings = {
       input.click();
     };
     container.querySelector('#data-clear').onclick = async () => {
-      if (!await UI.confirm('清空全部数据（笔记/题库/记录/三本/模板/批注）？此操作不可撤销！', { danger: true })) return;
+      if (!await UI.confirm('清空全部数据（笔记/题库/记录/三本/模板/批注/助教对话）？此操作不可撤销！', { danger: true })) return;
       if (!await UI.confirm('再次确认：真的要清空吗？建议先导出备份。', { danger: true })) return;
       Store.db = { meta: { version: 1, app: 'zhixue-notes' }, notes: [], annots: [], banks: [], records: [], entries: [], templates: [] };
       await Store.saveNow();
