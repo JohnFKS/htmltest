@@ -162,6 +162,8 @@ h1.page-title { font-size: 21px; margin: 0 0 4px; }
 
 /* ---------- toast ---------- */
 .toast-wrap { position: fixed; top: 64px; right: 20px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
+/* 对话栏展开时提示移到栏外/底部，避免遮住顶部操作按钮 */
+body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
 .toast {
   padding: 10px 16px; border-radius: var(--radius-sm); font-size: 13.5px;
   background: var(--ink); color: #fff; box-shadow: var(--shadow-lg);
@@ -477,6 +479,7 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
   border-radius: 6px; cursor: pointer; font-size: 16px; color: var(--ink-2); font-family: var(--font);
 }
 .chat-icon-btn:hover { background: var(--primary-soft); color: var(--primary); border-color: var(--line); }
+.chat-icon-btn:disabled { opacity: .45; cursor: not-allowed; background: none; color: var(--ink-3); }
 .chat-body { flex: 1; display: flex; min-height: 0; }
 .chat-rail {
   width: 0; flex: 0 0 auto; overflow: hidden; opacity: 0;
@@ -510,6 +513,21 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
 }
 .chat-session-ops button:hover { color: var(--primary); }
 .chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--surface); }
+.chat-memory.has-content { padding: 9px 12px 0; }
+.chat-memory-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 10px; border: 1px solid #cfe0d6; border-radius: 6px;
+  background: var(--primary-soft); color: var(--primary); font-size: 11.5px;
+}
+.chat-memory-card button {
+  border: none; background: none; color: var(--primary); cursor: pointer;
+  font-family: var(--font); font-size: 11.5px; text-decoration: underline; padding: 0;
+}
+.chat-memory-text {
+  max-height: 360px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface-2); font-size: 13px; line-height: 1.7;
+}
 .chat-context.has-content { padding: 9px 12px 0; }
 .chat-context-card {
   position: relative; padding: 7px 30px 8px 10px; border: 1px solid var(--line);
@@ -587,6 +605,7 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
   .chat-drawer { top: 0; width: 100vw; }
   .chat-drawer.show-history .chat-rail { width: 140px; }
   body.chat-open .view { padding-right: 14px; }
+  body.chat-open .toast-wrap { right: 12px; bottom: 12px; }
 }
 
 /* ---------- 仪表盘 ---------- */

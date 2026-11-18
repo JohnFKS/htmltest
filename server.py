@@ -110,6 +110,29 @@ def ai_endpoint(base_url: str, kind: str) -> str:
     return base + "/v1" + suffix
 
 
+def chat_text(value):
+    """把上游 message.content 归一为文本：兼容字符串 / 内容块数组 / 对象。"""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(chat_text(v) for v in value)
+    if isinstance(value, dict):
+        for key in ("text", "content", "html", "value"):
+            if key in value:
+                text = chat_text(value[key])
+                if text:
+                    return text
+        if value.get("type") not in (None, "text"):
+            return ""
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return ""
+    return str(value)
+
+
 def proxy_ai(payload: dict, cfg: dict, kind: str) -> dict:
     """转发到 OpenAI 兼容接口。"""
     ai = cfg.get("ai", {})
@@ -153,7 +176,7 @@ def proxy_ai(payload: dict, cfg: dict, kind: str) -> dict:
 
     if kind == "chat":
         try:
-            content = result["choices"][0]["message"]["content"]
+            content = chat_text(result["choices"][0]["message"]["content"])
         except (KeyError, IndexError, TypeError):
             raise RuntimeError(f"上游返回结构异常：{json.dumps(result, ensure_ascii=False)[:300]}")
         return {"content": content, "usage": result.get("usage", {})}

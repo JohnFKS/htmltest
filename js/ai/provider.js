@@ -4,14 +4,58 @@ window.AI = (() => {
   const live = () => Store.aiLive();
 
   function fill(tpl, map) {
-    let s = tpl;
-    for (const [k, v] of Object.entries(map)) s = s.replaceAll(`{${k}}`, v ?? '');
+    let s = String(tpl || '');
+    // 用函数式替换，避免笔记中的 $& / $' / $$ 被当成替换模式展开
+    for (const [k, v] of Object.entries(map)) s = s.replaceAll(`{${k}}`, () => String(v ?? ''));
     return s;
+  }
+
+  // 取消息正文（assistant 可能是 HTML，统一压成纯文本用于上下文/摘要）
+  function msgText(m) {
+    if (!m) return '';
+    return U.asText(m.role === 'assistant' ? (m.html || m.text || '') : (m.text || m.html || ''));
+  }
+
+  // 围绕选中位置截取笔记：成熟对话系统常用的「焦点上下文窗口」，避免长笔记只取开头
+  function noteExcerpt(text, selection, budget = 10000) {
+    const full = U.asText(text || '');
+    if (!full) return '（笔记内容为空）';
+    if (full.length <= budget) return full;
+    const sel = U.asText(selection || '').replace(/\s+/g, ' ').trim();
+    const probe = sel.slice(0, Math.min(60, sel.length));
+    const idx = probe ? full.indexOf(probe) : -1;
+    if (idx < 0) return full.slice(0, budget) + '\n…（未定位到选中位置，已取笔记开头节选）';
+    const start = Math.max(0, idx - Math.round(budget * 0.3));
+    const end = Math.min(full.length, start + budget);
+    return (start ? '…' : '') + full.slice(start, end) + (end < full.length ? '…' : '');
+  }
+
+  // 分层上下文：近期保真轮次 + 按当前问题召回的相关旧轮次（摘要在系统提示里单独传）
+  function assembleHistory(history, question) {
+    const items = (history || [])
+      .filter(m => m && (m.role === 'user' || m.role === 'assistant'))
+      .map(m => ({ id: m.id, role: m.role, text: msgText(m), compacted: !!m.compacted }))
+      .filter(m => m.text);
+    const recent = [];
+    let chars = 0;
+    for (let i = items.length - 1; i >= 0 && recent.length < 12; i--) {
+      const m = items[i];
+      const text = m.text.slice(0, m.role === 'assistant' ? 3000 : 1500);
+      if (chars + text.length > 14000 && recent.length) break;
+      recent.unshift({ role: m.role, content: text, id: m.id });
+      chars += text.length;
+    }
+    const recentIds = new Set(recent.map(m => m.id));
+    const pool = items.filter(m => !recentIds.has(m.id)).map(m => ({ id: m.id, role: m.role, text: m.text.slice(0, 600) }));
+    const hits = pool.length && window.Sim?.rank ? Sim.rank(question, pool, { recallTopK: 3 }) : [];
+    const recalled = hits.filter(h => h.score >= 0.12);
+    const recallText = recalled.map(h => `- [${h.role === 'user' ? '学生' : '助教'}] ${h.text}`).join('\n');
+    return { recent, recallText, stats: { recent: recent.length, recalled: recalled.length, compacted: items.filter(m => m.compacted).length } };
   }
 
   // 从模型返回中提取 JSON（容忍代码围栏与前后杂文）
   function extractJson(text) {
-    let t = String(text || '').trim();
+    let t = U.asText(text).trim();
     const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (fence) t = fence[1].trim();
     const start = t.indexOf('{');
@@ -114,7 +158,7 @@ window.AI = (() => {
 
   // 清理 markdown 围栏、转换残留 markdown 块后交给消毒器
   function cleanHtml(text) {
-    let t = String(text || '').trim();
+    let t = U.asText(text).trim();
     // 仅当整段被代码围栏包裹时剥离（内嵌的代码围栏保留给 convertMdBlocks 渲染）
     const wrapped = t.match(/^```[a-z]*\s*\n?([\s\S]*?)\n?\s*```$/);
     if (wrapped) t = wrapped[1].trim();
@@ -135,6 +179,12 @@ window.AI = (() => {
     });
   }
 
+  // 服务端代理返回 {content, usage}；content 可能是字符串、内容块数组或对象，统一取文本
+  async function rawChat(payload) {
+    const resp = await Api.aiChat(payload);
+    return U.asText(resp?.content ?? '');
+  }
+
   async function callChat({ key, filled, images, model, temperature, maxTokens }) {
     const cfg = Store.config.ai;
     const content = images && images.length
@@ -145,13 +195,12 @@ window.AI = (() => {
     if (images && images.length && !(cfg.visionModel || '').trim()) {
       throw new Error('图片作答需要配置「视觉模型」才能批改，请在设置中填写，或改用文本作答');
     }
-    const resp = await Api.aiChat({
+    return rawChat({
       messages,
       model: useModel,
       temperature: temperature ?? cfg.temperature,
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
     });
-    return resp.content;
   }
 
   // ---------- 各用途 ----------
@@ -251,30 +300,39 @@ window.AI = (() => {
     return { html: cleanHtml(await callChat({ key: 'ctxAsk', filled: prompt })), demo: false };
   }
 
-  // 笔记右侧对话栏：整篇笔记 + 选中文本 + 历史轮次的连续答疑
-  async function ctxChat({ noteTitle, noteText, selection, question, history = [] }) {
-    const q = String(question || '').trim();
+  // 笔记右侧对话栏：长期记忆摘要 + 焦点笔记 + 近期轮次 + 相关历史召回
+  async function ctxChat({ noteTitle, noteText, selection, question, history = [], summary = '' }) {
+    const q = U.asText(question || '').trim();
     if (!q) throw new Error('问题不能为空');
-    if (!live()) return Mock.ctxChat({ noteTitle, selection, question: q, history });
-    const system = fill(Store.prompt('ctxChat'), {
-      noteTitle: String(noteTitle || '当前笔记').slice(0, 80),
-      noteText: String(noteText || '').slice(0, 12000) || '（笔记内容为空）',
-      selection: String(selection || '').slice(0, 1500) || '（本轮没有选中文本）',
+    const { recent, recallText, stats } = assembleHistory(history, q);
+    if (!live()) return Mock.ctxChat({ noteTitle, selection, question: q, history, summary, context: stats });
+    let system = fill(Store.prompt('ctxChat'), {
+      noteTitle: U.asText(noteTitle || '当前笔记').slice(0, 80),
+      noteText: noteExcerpt(noteText, selection),
+      selection: U.asText(selection || '').slice(0, 1500) || '（本轮没有选中文本）',
+      summary: U.asText(summary || '').slice(0, 2500) || '（暂无长期记忆摘要）',
       question: q,
     });
-    const turns = (history || []).slice(-8).map(m => ({
-      role: m.role === 'assistant' ? 'assistant' : 'user',
-      content: m.role === 'assistant'
-        ? U.stripHtml(m.html || m.text || '').slice(0, 4000)
-        : String(m.text || '').slice(0, 2000),
-    }));
+    if (recallText) system += `\n\n【相关历史召回】\n${recallText}`;
     const messages = [
       { role: 'system', content: system },
-      ...turns,
+      ...recent,
       { role: 'user', content: q },
     ];
-    const raw = await Api.aiChat({ messages });
-    return { html: cleanHtml(raw), demo: false };
+    const raw = await rawChat({ messages });
+    return { html: cleanHtml(raw), demo: false, context: stats };
+  }
+
+  // 把旧对话压缩为长期记忆摘要（ConversationSummaryBuffer 风格）
+  async function compactChat({ summary = '', messages = [] }) {
+    const lines = (messages || []).map(m => `[${m.role === 'user' ? '学生' : '助教'}] ${msgText(m).slice(0, 500)}`).join('\n').slice(0, 8000);
+    if (!live()) return Mock.compactChat({ summary, messages });
+    const prompt = fill(Store.prompt('chatCompact'), {
+      summary: U.asText(summary || '').slice(0, 2000) || '（暂无）',
+      messages: lines || '（暂无新增对话）',
+    });
+    const text = U.asText(await callChat({ key: 'chatCompact', filled: prompt, temperature: 0.1, maxTokens: 1200 })).trim();
+    return { text: text.slice(0, 2500), demo: false };
   }
 
   // 从题目/本质思路生成复习卡片（JSON：{cards:[{front, back}]}）
@@ -295,11 +353,11 @@ window.AI = (() => {
       chunk: String(chunk).slice(0, 24000), pageFrom, pageTo,
     });
     const raw = await callChat({ key: 'pdfNotes', filled: prompt, temperature: 0.2, maxTokens: 8000 });
-    let t = String(raw || '').trim();
+    let t = U.asText(raw).trim();
     const fence = t.match(/```(?:markdown|md)?\s*([\s\S]*?)```/);
     if (fence) t = fence[1].trim();
     return { md: t, demo: false };
   }
 
-  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse, ctxAsk, ctxChat, makeCards, pdfNotes };
+  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse, ctxAsk, ctxChat, compactChat, makeCards, pdfNotes };
 })();

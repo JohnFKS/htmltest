@@ -117,6 +117,26 @@ D. 96
   ok(await page.locator('#chat-messages .chat-msg-ai .ai-report').count() === 2, '多轮回答已渲染');
   ok(await page.evaluate(() => Store.db.chatSessions[0].messages.length === 4), '多轮消息已持久化');
 
+  const compactResult = await page.evaluate(async () => {
+    const s = Store.coll('chatSessions')[0];
+    const backupMessages = JSON.parse(JSON.stringify(s.messages));
+    const backupMemory = JSON.parse(JSON.stringify(s.memory || {}));
+    for (let i = 0; i < 12; i++) {
+      s.messages.unshift({
+        id: U.uid('msg'), role: i % 2 ? 'assistant' : 'user',
+        text: `旧对话 ${i}`, html: `<p>旧对话 ${i}</p>`, compacted: false, createdAt: U.now(),
+      });
+    }
+    Store.update('chatSessions', s.id, { messages: s.messages });
+    const done = await NoteChat.compactNow(s, { silent: true });
+    const result = { done, hasSummary: !!s.memory?.summary, card: !!document.querySelector('.chat-memory-card') };
+    s.messages = backupMessages;
+    s.memory = backupMemory;
+    Store.update('chatSessions', s.id, { messages: s.messages, memory: s.memory });
+    return result;
+  });
+  ok(compactResult.done && compactResult.hasSummary && compactResult.card, '历史压缩生成长期记忆摘要并显示状态卡');
+
   await page.click('.chat-head [data-act="new"]');
   await page.waitForTimeout(250);
   ok(await page.evaluate(() => Store.db.chatSessions.length === 2), '可新建第二段对话');
@@ -140,6 +160,22 @@ D. 96
   ok(!s4.includes('iframe'), 'XSS: iframe 被移除');
   const s5 = await page.evaluate(() => Sanitize.html('<p class="hl-bad">正常</p>'));
   ok(s5.includes('hl-bad'), 'XSS: 白名单 class 保留');
+
+  console.log('== 3b. AI 返回值归一化（修复 [object Object]）==');
+  const normalizedHtml = await page.evaluate(async () => {
+    const oldAiChat = Api.aiChat;
+    const oldAiCfg = JSON.parse(JSON.stringify(Store.config.ai));
+    Api.aiChat = async () => ({ content: [{ type: 'text', text: '<p>内容块回答</p>' }], usage: {} });
+    Store.config.ai = { ...Store.config.ai, baseUrl: 'https://example.invalid/v1', apiKey: 'test', chatModel: 'test' };
+    try {
+      const r = await AI.ctxChat({ noteTitle: '测试笔记', noteText: '', question: '测试' });
+      return r.html;
+    } finally {
+      Api.aiChat = oldAiChat;
+      Store.config.ai = oldAiCfg;
+    }
+  });
+  ok(normalizedHtml.includes('内容块回答') && !normalizedHtml.includes('[object Object]'), '对象/数组内容块正确转成文本');
 
   console.log('== 4. 相似度引擎单元检查 ==');
   const simA = await page.evaluate(() => Sim.hybridScore('已知函数 f(x)=x^2-2ax+3 在 [0,2] 单调递减求 a 范围', '已知函数 f(x)=x^2+bx+c 在 [1,3] 单调递增求 b 范围').score);
@@ -418,7 +454,7 @@ D. 96
   console.log('== 15. 设置页 ==');
   await page.click('#nav a[data-view="settings"]');
   await page.waitForTimeout(400);
-  ok(await page.locator('.prompt-item').count() === 13, '13 组提示词可编辑');
+  ok(await page.locator('.prompt-item').count() === 14, '14 组提示词可编辑');
   await page.locator('.prompt-item[data-key="grade"] .prompt-head').click(); // 展开面板
   await page.locator('.prompt-item [data-ta="grade"]').fill('自定义批改提示词 E2E');
   await page.locator('.prompt-item [data-save="grade"]').click();

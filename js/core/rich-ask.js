@@ -6,15 +6,23 @@ window.RichAsk = (() => {
   const SCOPE = '.rich, .q-stem, .q-options, .ai-report, .entry-stem, .diff-box';
   let menu = null;
 
+  function scopeEl(node) {
+    const el = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
+    return el && el.closest(SCOPE) ? el : null;
+  }
+
   function selectionInfo() {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
     const text = sel.toString().replace(/\s+/g, ' ').trim();
     if (text.length < 2) return null;
-    const node = sel.anchorNode;
-    const el = node && (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
-    if (!el || !el.closest(SCOPE)) return null;
-    return { text: text.slice(0, 1200) };
+    const el = scopeEl(sel.anchorNode) || scopeEl(sel.focusNode);
+    if (!el) return null;
+    return {
+      text: text.slice(0, 1200),
+      // 仅在笔记编辑器内选中时才绑定当前笔记；题目/报告等场景走「通用问答」
+      noteId: el.closest('.notes-editor, #editor-area') ? (Views.notes?.currentId || null) : null,
+    };
   }
 
   function hide() { menu?.remove(); menu = null; }
@@ -34,8 +42,8 @@ window.RichAsk = (() => {
     menu.innerHTML = `
       <button data-act="ask">🤖 在右侧对话栏提问…</button>
       <button data-act="explain">✨ 让 AI 解释这段（右侧）</button>`;
-    menu.style.left = Math.min(e.clientX, innerWidth - 240) + 'px';
-    menu.style.top = Math.min(e.clientY, innerHeight - 96) + 'px';
+    menu.style.left = U.clamp(e.clientX, 8, Math.max(8, innerWidth - 240)) + 'px';
+    menu.style.top = U.clamp(e.clientY, 8, Math.max(8, innerHeight - 96)) + 'px';
     document.body.appendChild(menu);
     menu.querySelectorAll('button').forEach(btn => btn.onclick = () => {
       const preset = btn.dataset.act === 'explain' ? '请解释这段内容：它说了什么？为什么重要？' : '';
@@ -48,23 +56,27 @@ window.RichAsk = (() => {
   function openAsk(sel, preset = '') {
     if (!window.NoteChat) return UI.toast('对话栏尚未就绪，请刷新页面', 'error');
     NoteChat.open({
+      noteId: sel.noteId,
       selection: sel.text,
       newSession: true,
       ...(preset ? { question: preset, autoSend: true } : { draft: '' }),
     });
   }
 
-  /** 把问答块追加到当前笔记（无当前笔记则新建一篇） */
-  function appendToNote(question, selText, answerHtml) {
-    const noteId = Views.notes?.currentId;
+  /** 把问答块追加到指定笔记（不传则当前笔记；无目标则新建一篇） */
+  function appendToNote(question, selText, answerHtml, targetNoteId) {
+    const noteId = targetNoteId !== undefined ? targetNoteId : (Views.notes?.currentId || null);
     let note = noteId ? Store.find('notes', noteId) : null;
-    const block = `<details open class="ctx-qa"><summary>🤖 AI 问答：${U.esc((question || '').slice(0, 40))}</summary>
-      ${selText ? `<blockquote>${U.esc(selText.slice(0, 200))}</blockquote>` : ''}
-      ${answerHtml}
+    const q = U.asText(question || '');
+    const quote = U.asText(selText || '');
+    const safeAnswer = Sanitize.html(U.asText(answerHtml || ''));
+    const block = `<details open class="ctx-qa"><summary>🤖 AI 问答：${U.esc(q.slice(0, 40))}</summary>
+      ${quote ? `<blockquote>${U.esc(quote.slice(0, 200))}</blockquote>` : ''}
+      ${safeAnswer}
       <p class="muted" style="font-size:12px">— AI 生成于 ${U.fmt(U.now())}，关键结论请自行校验</p></details><p></p>`;
     if (!note) {
       note = Store.insert('notes', {
-        id: U.uid('note'), title: (question || 'AI 问答').slice(0, 20),
+        id: U.uid('note'), title: (q || 'AI 问答').slice(0, 20),
         content: Sanitize.html(block), createdAt: U.now(), updatedAt: U.now(),
       });
       if (Views.notes) Views.notes.currentId = note.id;
@@ -73,8 +85,8 @@ window.RichAsk = (() => {
     }
     Store.update('notes', note.id, { content: (note.content || '') + Sanitize.html(block) });
     UI.toast(`已追加到笔记「${note.title}」`);
-    // 若正停留在笔记视图，同步插入编辑器并渲染
-    if (App.currentView === 'notes') {
+    // 仅当编辑器正打开同一篇笔记时同步插入，避免写错笔记
+    if (App.currentView === 'notes' && Views.notes?.currentId === note.id) {
       const ed = document.getElementById('editor-area');
       if (ed) { ed.insertAdjacentHTML('beforeend', Sanitize.html(block)); Ktx.renderMath(ed); }
     }

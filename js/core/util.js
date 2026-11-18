@@ -79,7 +79,25 @@ window.U = {
   // 从 HTML 提取纯文本（用于相似度计算、搜索）
   stripHtml(html = '') {
     const d = document.createElement('div');
-    d.innerHTML = html;
+    d.innerHTML = Sanitize.html(html);
     return (d.textContent || '').replace(/\s+/g, ' ').trim();
+  },
+
+  // 把上游可能返回的字符串 / 内容块数组 / 对象统一压成文本，避免 [object Object]
+  asText(value) {
+    if (value == null) return '';
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) return value.map(v => U.asText(v)).join('');
+    if (typeof value === 'object') {
+      for (const key of ['text', 'content', 'html', 'value']) {
+        if (Object.prototype.hasOwnProperty.call(value, key)) {
+          const s = U.asText(value[key]);
+          if (s) return s;
+        }
+      }
+      if (value.type && value.type !== 'text') return '';
+      try { return JSON.stringify(value); } catch (e) { return ''; }
+    }
+    return String(value);
   },
 };
