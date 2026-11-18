@@ -11,6 +11,36 @@ window.RichAsk = (() => {
     return el && el.closest(SCOPE) ? el : null;
   }
 
+  function pathOf(node, root) {
+    if (!node || !root) return null;
+    const path = [];
+    let cur = node;
+    while (cur && cur !== root) {
+      const parent = cur.parentNode;
+      if (!parent) return null;
+      path.unshift(Array.prototype.indexOf.call(parent.childNodes, cur));
+      cur = parent;
+    }
+    return cur === root ? path : null;
+  }
+
+  function nodeAtPath(root, path) {
+    let node = root;
+    for (const i of path || []) {
+      if (!node?.childNodes?.[i]) return null;
+      node = node.childNodes[i];
+    }
+    return node;
+  }
+
+  function blockOf(node, root) {
+    let el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    while (el && el !== root && !/^(P|LI|BLOCKQUOTE|H1|H2|H3|H4|H5|H6|PRE|DIV|TD|FIGCAPTURE)$/.test(el.tagName)) {
+      el = el.parentElement;
+    }
+    return el && el !== root ? el : null;
+  }
+
   function selectionInfo() {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
@@ -18,10 +48,22 @@ window.RichAsk = (() => {
     if (text.length < 2) return null;
     const el = scopeEl(sel.anchorNode) || scopeEl(sel.focusNode);
     if (!el) return null;
+    const editor = el.closest('#editor-area');
+    let anchor = null;
+    if (editor) {
+      const range = sel.getRangeAt(0);
+      const startPath = pathOf(range.startContainer, editor);
+      const endPath = pathOf(range.endContainer, editor);
+      const block = blockOf(range.startContainer, editor) || blockOf(range.endContainer, editor);
+      if (startPath && endPath) {
+        anchor = { startPath, startOffset: range.startOffset, endPath, endOffset: range.endOffset, blockPath: pathOf(block, editor) };
+      }
+    }
     return {
       text: text.slice(0, 1200),
       // 仅在笔记编辑器内选中时才绑定当前笔记；题目/报告等场景走「通用问答」
-      noteId: el.closest('.notes-editor, #editor-area') ? (Views.notes?.currentId || null) : null,
+      noteId: editor ? (Views.notes?.currentId || null) : null,
+      anchor,
     };
   }
 
@@ -58,19 +100,53 @@ window.RichAsk = (() => {
     NoteChat.open({
       noteId: sel.noteId,
       selection: sel.text,
+      anchor: sel.anchor,
       newSession: true,
       ...(preset ? { question: preset, autoSend: true } : { draft: '' }),
     });
   }
 
+  // 用 CSS Highlight API 高亮原选区：不修改原文 DOM，刷新后可退化为引用块高亮
+  function highlightSelection(editor, anchor) {
+    if (!window.CSS || !CSS.highlights || typeof Highlight === 'undefined' || !anchor) return;
+    try {
+      const s = nodeAtPath(editor, anchor.startPath);
+      const e = nodeAtPath(editor, anchor.endPath);
+      if (!s || !e) return;
+      const range = document.createRange();
+      range.setStart(s, Math.min(anchor.startOffset || 0, s.textContent.length));
+      range.setEnd(e, Math.min(anchor.endOffset || 0, e.textContent.length));
+      if (!range.collapsed) CSS.highlights.set('ai-note-annotation', new Highlight(range));
+    } catch (e) { /* 不支持时仅保留块级高亮 */ }
+  }
+
+  // 把批注块插到原选中文本所在块之后；不包裹或改写任何原始文本节点
+  function insertAtAnchor(editor, html, anchor) {
+    if (!editor || !anchor) return false;
+    let target = anchor.blockPath ? nodeAtPath(editor, anchor.blockPath) : null;
+    if (!target || !editor.contains(target)) {
+      const start = nodeAtPath(editor, anchor.startPath);
+      target = start?.nodeType === Node.ELEMENT_NODE ? start : start?.parentElement;
+    }
+    while (target && target !== editor && !/^(P|LI|BLOCKQUOTE|H1|H2|H3|H4|H5|H6|PRE|DIV|TD|FIGCAPTURE)$/.test(target.tagName || '')) {
+      target = target.parentElement;
+    }
+    if (!target || target === editor || !editor.contains(target)) return false;
+    const after = target.tagName === 'LI' && target.parentElement ? target.parentElement : target;
+    after.insertAdjacentHTML('afterend', html);
+    target.classList?.add('ai-annotated-block');
+    highlightSelection(editor, anchor);
+    return true;
+  }
+
   /** 把问答块追加到指定笔记（不传则当前笔记；无目标则新建一篇） */
-  function appendToNote(question, selText, answerHtml, targetNoteId) {
+  function appendToNote(question, selText, answerHtml, targetNoteId, anchor) {
     const noteId = targetNoteId !== undefined ? targetNoteId : (Views.notes?.currentId || null);
     let note = noteId ? Store.find('notes', noteId) : null;
     const q = U.asText(question || '');
     const quote = U.asText(selText || '');
     const safeAnswer = Sanitize.html(U.asText(answerHtml || ''));
-    const block = `<details open class="ctx-qa"><summary>🤖 AI 问答：${U.esc(q.slice(0, 40))}</summary>
+    const block = `<details open class="ai-annotation ctx-qa"><summary>🤖 AI 批注：${U.esc(q.slice(0, 40))}</summary>
       ${quote ? `<blockquote>${U.esc(quote.slice(0, 200))}</blockquote>` : ''}
       ${safeAnswer}
       <p class="muted" style="font-size:12px">— AI 生成于 ${U.fmt(U.now())}，关键结论请自行校验</p></details><p></p>`;
@@ -83,13 +159,22 @@ window.RichAsk = (() => {
       UI.toast(`已创建笔记「${note.title}」并写入问答`);
       return;
     }
-    Store.update('notes', note.id, { content: (note.content || '') + Sanitize.html(block) });
-    UI.toast(`已追加到笔记「${note.title}」`);
-    // 仅当编辑器正打开同一篇笔记时同步插入，避免写错笔记
+    const safeBlock = Sanitize.html(block);
     if (App.currentView === 'notes' && Views.notes?.currentId === note.id) {
       const ed = document.getElementById('editor-area');
-      if (ed) { ed.insertAdjacentHTML('beforeend', Sanitize.html(block)); Ktx.renderMath(ed); }
+      if (ed) {
+        const atAnchor = insertAtAnchor(ed, safeBlock, anchor);
+        if (!atAnchor) ed.insertAdjacentHTML('beforeend', safeBlock);
+        Ktx.renderMath(ed);
+        Views.notes._undo?.sync();
+        Views.notes._markDirty?.();
+        Store.update('notes', note.id, { content: ed.innerHTML });
+        UI.toast(atAnchor ? `已追加到选中文本下方 · ${note.title}` : `已追加到笔记末尾 · ${note.title}`, 'success');
+        return;
+      }
     }
+    Store.update('notes', note.id, { content: (note.content || '') + safeBlock });
+    UI.toast(`已追加到笔记「${note.title}」`);
   }
 
   return { openAsk, appendToNote };

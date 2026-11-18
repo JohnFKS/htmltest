@@ -14,12 +14,18 @@ Views.notes = {
         <div class="notes-editor">
           <div class="note-editor-head">
             <input class="note-title-input" id="note-title" placeholder="笔记标题…">
-            <button class="btn btn-ghost btn-sm" id="note-md-import" title="把 Markdown 文本转换为富文本块追加到笔记">MD 粘贴转换</button>
-            <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">📄 导入文件</button>
-            <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">📕 导入 PDF</button>
-            <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
-            <button class="btn btn-ghost btn-sm" id="note-chat-open" title="打开右侧笔记助教：多轮提问与历史对话">💬 笔记助教</button>
-            <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">导出 HTML</button>
+            <div class="note-head-actions">
+              <button class="btn btn-primary btn-sm" id="note-save" title="保存为一个版本（Ctrl+S）">💾 保存</button>
+              <button class="btn btn-ghost btn-sm" id="note-history" title="查看/恢复历史版本，永久保存或删除">🕘 历史</button>
+              <button class="btn btn-ghost btn-sm" id="note-autosave" title="设置自动保存间隔与版本保留数量">⚙ 保存设置</button>
+              <span class="note-head-sep"></span>
+              <button class="btn btn-ghost btn-sm" id="note-md-import" title="把 Markdown 文本转换为富文本块追加到笔记">MD 粘贴转换</button>
+              <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">📄 导入文件</button>
+              <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">📕 导入 PDF</button>
+              <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
+              <button class="btn btn-ghost btn-sm" id="note-chat-open" title="打开右侧笔记助教：多轮提问与历史对话">💬 笔记助教</button>
+              <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">导出 HTML</button>
+            </div>
           </div>
           <div class="editor-toolbar" id="editor-toolbar"></div>
           <div class="editor-area rich" id="editor-area" contenteditable="true" data-ph="开始书写…支持表格、折叠块、公式 $E=mc^2$、代码块，可直接 Ctrl+V 粘贴图片或 Markdown"></div>
@@ -31,6 +37,19 @@ Views.notes = {
     const editor = container.querySelector('#editor-area');
     const titleInput = container.querySelector('#note-title');
     this.currentId = this.currentId && Store.find('notes', this.currentId) ? this.currentId : (notes[0]?.id || null);
+
+    // ---------- 保存状态 / 版本历史 ----------
+    const notesCfg = () => Store.config.notes || { autoSaveSec: 60, maxVersions: 20 };
+    const versionsOf = id => Store.coll('noteVersions')
+      .filter(v => v.noteId === id)
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    let dirty = false;
+    let lastEditAt = 0;
+    let lastVersionAt = null;
+    let autoTimer = null;
+    const markDirty = () => { dirty = true; lastEditAt = Date.now(); this.updateStatus(); };
+    this._markDirty = markDirty;
+    this._statusInfo = () => ({ dirty, lastVersionAt, versions: versionsOf(this.currentId) });
 
     // ---------- 列表 ----------
     const renderList = () => {
@@ -48,6 +67,9 @@ Views.notes = {
     // ---------- 打开 ----------
     this.open = (id, edEl, tEl) => {
       this.currentId = id;
+      dirty = false;
+      lastEditAt = 0;
+      lastVersionAt = versionsOf(id)[0]?.createdAt || null;
       const n = Store.find('notes', id);
       if (!n) return;
       edEl.innerHTML = n.content || '';
@@ -67,15 +89,55 @@ Views.notes = {
       titleInput.focus(); titleInput.select();
     };
 
-    // ---------- 自动保存 ----------
-    const saveCurrent = () => {
+    // ---------- 草稿暂存 + 版本保存 ----------
+    const saveDraft = () => {
       if (!this.currentId) return;
       Store.update('notes', this.currentId, { title: titleInput.value.trim() || '未命名笔记', content: editor.innerHTML });
       this.updateStatus();
       const item = listEl.querySelector(`.note-item[data-id="${this.currentId}"] .note-item-title`);
       if (item) item.textContent = titleInput.value.trim() || '未标题';
     };
-    const debouncedSave = U.debounce(saveCurrent, 900);
+    const debouncedSave = U.debounce(saveDraft, 600);
+    const afterEdit = () => { markDirty(); debouncedSave(); };
+
+    const pruneVersions = noteId => {
+      const max = U.clamp(Number(notesCfg().maxVersions) || 20, 1, 200);
+      const regular = versionsOf(noteId).filter(v => !v.pinned);
+      regular.slice(max).forEach(v => Store.remove('noteVersions', v.id));
+    };
+
+    const createVersion = source => {
+      if (!this.currentId) return null;
+      saveDraft();
+      const v = Store.insert('noteVersions', {
+        id: U.uid('ver'), noteId: this.currentId,
+        title: titleInput.value.trim() || '未命名笔记',
+        content: editor.innerHTML, source: source || 'manual', pinned: false,
+        createdAt: U.now(),
+      });
+      pruneVersions(this.currentId);
+      dirty = false;
+      lastVersionAt = v.createdAt;
+      this.updateStatus();
+      return v;
+    };
+
+    const manualSave = () => {
+      createVersion('manual');
+      UI.toast('已保存为一个版本', 'success');
+    };
+
+    const setupAutoSave = () => {
+      if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+      const sec = U.clamp(Number(notesCfg().autoSaveSec) || 0, 0, 86400);
+      if (!sec) { this.updateStatus(); return; }
+      autoTimer = setInterval(() => {
+        if (!dirty || Date.now() - lastEditAt < sec * 1000) return;
+        createVersion('auto');
+      }, 1000);
+      this.updateStatus();
+    };
+    setupAutoSave();
     // ---------- 撤销/重做（快照式：程序化插入、防抖保存都不会破坏历史） ----------
     const undoStack = [], redoStack = [];
     let lastSnap = null;
@@ -95,8 +157,7 @@ Views.notes = {
       titleInput.value = s.title;
       lastSnap = s;
       Ktx.renderMath(editor);
-      debouncedSave();
-      this.updateStatus();
+      afterEdit();
     };
     const doUndo = () => {
       if (!undoStack.length) return UI.toast('没有可撤销的编辑');
@@ -110,8 +171,8 @@ Views.notes = {
     };
     this._undo = { undo: doUndo, redo: doRedo, counts: () => ({ u: undoStack.length, r: redoStack.length }), sync: syncSnap };
 
-    editor.addEventListener('input', () => { pushUndoSoon(); debouncedSave(); this.updateStatus(); });
-    titleInput.addEventListener('input', () => { pushUndoSoon(); debouncedSave(); });
+    editor.addEventListener('input', () => { pushUndoSoon(); afterEdit(); });
+    titleInput.addEventListener('input', () => { pushUndoSoon(); afterEdit(); });
     titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') editor.focus(); });
     editor.addEventListener('keydown', e => {
       const mod = e.ctrlKey || e.metaKey;
@@ -127,7 +188,7 @@ Views.notes = {
           e.preventDefault();
           const file = it.getAsFile();
           const dataUrl = await U.compressDataURL(await U.readFileDataURL(file));
-          this.insertImage(editor, dataUrl);
+          this.insertImage(editor, dataUrl, afterEdit);
           return;
         }
       }
@@ -136,13 +197,13 @@ Views.notes = {
         e.preventDefault();
         document.execCommand('insertHTML', false, Sanitize.html(MD.toHtml(text)));
         Ktx.renderMath(editor);
-        debouncedSave();
+        afterEdit();
         UI.toast('已按 Markdown 转换插入');
       }
     });
 
     // ---------- 工具栏 ----------
-    this.buildToolbar(container.querySelector('#editor-toolbar'), editor, debouncedSave, { undo: doUndo, redo: doRedo });
+    this.buildToolbar(container.querySelector('#editor-toolbar'), editor, afterEdit, { undo: doUndo, redo: doRedo });
 
     // ---------- MD 导入 ----------
     container.querySelector('#note-md-import').onclick = async () => {
@@ -150,7 +211,7 @@ Views.notes = {
       if (!text) return;
       editor.insertAdjacentHTML('beforeend', Sanitize.html(MD.toHtml(text)));
       Ktx.renderMath(editor);
-      debouncedSave();
+      afterEdit();
     };
 
     // ---------- 导入 MD 文件生成新笔记 ----------
@@ -216,7 +277,101 @@ Views.notes = {
     };
 
     // ---------- 插入批注产物 ----------
-    container.querySelector('#note-insert-annot').onclick = () => this.pickAnnot(editor, debouncedSave);
+    container.querySelector('#note-insert-annot').onclick = () => this.pickAnnot(editor, afterEdit);
+
+    // ---------- 手动保存 / 历史版本 / 保存设置 ----------
+    const sourceLabel = v => ({ manual: '手动', auto: '自动', restore: '恢复' }[v.source] || '版本');
+    let versionModal = null;
+    const renderVersionList = () => {
+      if (!versionModal || !this.currentId) return;
+      const list = versionsOf(this.currentId);
+      const head = `<div class="version-summary">共 ${list.length} 个版本 · 永久保存 ${list.filter(v => v.pinned).length} 个 · 自动保存每 ${notesCfg().autoSaveSec || '关闭'} 秒 · 普通版本保留 ${notesCfg().maxVersions} 个</div>`;
+      const body = list.length ? `<div class="version-list">${list.map(v => `
+        <div class="version-item ${v.pinned ? 'pinned' : ''}" data-id="${v.id}">
+          <div class="version-main">
+            <div class="version-title"><span class="version-chip">${sourceLabel(v)}</span>${U.esc(v.title || '未命名笔记')}</div>
+            <div class="version-sub">${U.fmt(v.createdAt)} · ${(v.content || '').length} 字符${v.pinned ? ' · 🔒 永久保存' : ''}</div>
+          </div>
+          <div class="version-ops">
+            <button class="btn btn-ghost btn-xs" data-act="restore">恢复此版</button>
+            <button class="btn btn-ghost btn-xs" data-act="pin">${v.pinned ? '取消永久' : '永久保存'}</button>
+            <button class="btn btn-ghost btn-xs danger" data-act="delete">删除</button>
+          </div>
+        </div>`).join('')}</div>` : '<div class="empty" style="padding:30px;text-align:center;color:var(--ink-3)">还没有历史版本，点击「💾 保存」创建第一个版本。</div>';
+      versionModal.bodyEl.innerHTML = head + body;
+      versionModal.bodyEl.querySelectorAll('[data-act]').forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.closest('.version-item')?.dataset.id;
+          const v = Store.find('noteVersions', id);
+          if (!v) return;
+          if (btn.dataset.act === 'restore') {
+            if (!await UI.confirm(`恢复「${U.fmt(v.createdAt)}」的版本？当前未保存修改会先存为一个版本，然后恢复到所选版本。`, { danger: true })) return;
+            if (dirty) createVersion('auto');
+            editor.innerHTML = Sanitize.html(v.content || '');
+            titleInput.value = v.title || '';
+            syncSnap();
+            Ktx.renderMath(editor);
+            afterEdit();
+            createVersion('restore');
+            renderList();
+            versionModal.close();
+            UI.toast('已恢复所选版本', 'success');
+          } else if (btn.dataset.act === 'pin') {
+            Store.update('noteVersions', id, { pinned: !v.pinned });
+            renderVersionList();
+            UI.toast(v.pinned ? '已取消永久保存' : '已永久保存', 'success');
+          } else if (btn.dataset.act === 'delete') {
+            if (!await UI.confirm(`删除「${U.fmt(v.createdAt)}」的版本？此操作不可撤销。`, { danger: true })) return;
+            Store.remove('noteVersions', id);
+            renderVersionList();
+            this.updateStatus();
+            UI.toast('版本已删除');
+          }
+        };
+      });
+    };
+    container.querySelector('#note-history').onclick = () => {
+      versionModal = UI.modal({ title: '笔记历史版本', width: 780, raw: true, body: '', actions: [{ label: '关闭' }] });
+      renderVersionList();
+    };
+    container.querySelector('#note-save').onclick = manualSave;
+    container.querySelector('#note-autosave').onclick = () => {
+      const cfg = notesCfg();
+      const m = UI.modal({
+        title: '笔记保存设置', width: 480, raw: true,
+        body: `<div class="form-row"><label>自动保存版本间隔（秒）</label>
+                 <input class="input" id="cfg-auto-save" type="number" min="0" max="86400" step="10" value="${U.clamp(Number(cfg.autoSaveSec) || 0, 0, 86400)}">
+                 <div class="field-hint">0 = 关闭自动版本；编辑内容仍会即时暂存到草稿，防止意外丢失。</div></div>
+               <div class="form-row"><label>每篇笔记保留的历史版本数</label>
+                 <input class="input" id="cfg-max-versions" type="number" min="1" max="200" step="1" value="${U.clamp(Number(cfg.maxVersions) || 20, 1, 200)}">
+                 <div class="field-hint">超出数量的旧版本自动清理；已「永久保存」的版本不会被清理。</div></div>`,
+        actions: [
+          { label: '取消' },
+          { label: '保存设置', primary: true, onClick: async close => {
+            const sec = U.clamp(parseInt(document.getElementById('cfg-auto-save').value, 10) || 0, 0, 86400);
+            const max = U.clamp(parseInt(document.getElementById('cfg-max-versions').value, 10) || 20, 1, 200);
+            Store.config.notes = { ...notesCfg(), autoSaveSec: sec, maxVersions: max };
+            await Store.saveConfig();
+            if (this.currentId) pruneVersions(this.currentId);
+            setupAutoSave();
+            close();
+            UI.toast('保存设置已更新', 'success');
+          } },
+        ],
+      });
+      void m;
+    };
+
+    const onSaveKey = e => {
+      if (App.currentView !== 'notes') return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); manualSave(); }
+    };
+    this._cleanup?.();
+    document.addEventListener('keydown', onSaveKey);
+    this._cleanup = () => {
+      if (autoTimer) clearInterval(autoTimer);
+      document.removeEventListener('keydown', onSaveKey);
+    };
 
     // ---------- 右侧笔记助教 ----------
     container.querySelector('#note-chat-open').onclick = () => {
@@ -259,7 +414,14 @@ code{font-family:Consolas,monospace}img{max-width:100%}</style></head>
     const el = document.getElementById('note-status');
     if (!el || !this.currentId) return;
     const n = Store.find('notes', this.currentId);
-    el.textContent = `已自动保存 · ${U.fmt(n?.updatedAt || n?.createdAt)} · 约 ${(U.stripHtml(n?.content || '').length / 1000).toFixed(1)} 千字`;
+    const info = this._statusInfo?.() || {};
+    const cfg = Store.config.notes || { autoSaveSec: 60, maxVersions: 20 };
+    const versions = info.versions || [];
+    const latest = versions[0];
+    const latestLabel = latest
+      ? `最近版本 ${U.fmt(latest.createdAt)}（${latest.source === 'manual' ? '手动' : latest.source === 'restore' ? '恢复' : '自动'}）`
+      : '尚无历史版本';
+    el.textContent = `${info.dirty ? '● 草稿未存为版本' : '✓ 已保存版本'} · 草稿 ${U.fmt(n?.updatedAt || n?.createdAt)} · ${latestLabel} · ${versions.length} 版 · ${cfg.autoSaveSec ? `自动 ${cfg.autoSaveSec}s` : '自动关闭'}`;
   },
 
   buildToolbar(bar, editor, save, undoApi = {}) {
@@ -300,6 +462,7 @@ code{font-family:Consolas,monospace}img{max-width:100%}</style></head>
         if (tex) insertHTML(`$$${U.esc(tex)}$$<p></p>`);
         Ktx.renderMath(editor);
       } },
+      { icon: '⌫', title: '清除格式', cmd: () => document.execCommand('removeFormat') },
       { icon: '🖼', title: '插入图片', cmd: () => this.pickImage(editor, save) },
       { icon: '✂', title: '去截图批注制作插图', cmd: () => { location.hash = 'annotator'; UI.toast('先在批注页制作插图，再回到这里「插入批注图」'); } },
     ];
@@ -319,13 +482,14 @@ code{font-family:Consolas,monospace}img{max-width:100%}</style></head>
     return t + '</tbody></table>';
   },
 
-  async insertImage(editor, dataUrl) {
+  async insertImage(editor, dataUrl, after) {
     const url = await Api.upload(dataUrl);
     editor.focus();
     const okIns = document.execCommand('insertHTML', false, `<img src="${url}">`);
     if (!okIns) editor.insertAdjacentHTML('beforeend', `<img src="${url}">`);
     Ktx.renderMath(editor);
-    Store.save();
+    if (after) after();
+    else Store.save();
     UI.toast('图片已上传插入');
   },
 
@@ -386,7 +550,7 @@ code{font-family:Consolas,monospace}img{max-width:100%}</style></head>
     input.onchange = async () => {
       if (!input.files[0]) return;
       const dataUrl = await U.compressDataURL(await U.readFileDataURL(input.files[0]));
-      this.insertImage(editor, dataUrl);
+      this.insertImage(editor, dataUrl, save);
     };
     input.click();
   },

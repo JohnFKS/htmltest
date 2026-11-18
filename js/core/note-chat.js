@@ -45,11 +45,11 @@ window.NoteChat = (() => {
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0] || null;
   }
 
-  function createSession({ noteId = null, selection = '', title = '' } = {}) {
+  function createSession({ noteId = null, selection = '', anchor = null, title = '' } = {}) {
     const note = noteById(noteId);
     const s = {
       id: U.uid('chat'), noteId: noteId || null, noteTitle: note?.title || '通用问答',
-      title: title || '新对话', context: { selection: String(selection || '').slice(0, 1200) },
+      title: title || '新对话', context: { selection: String(selection || '').slice(0, 1200), anchor: anchor || null },
       memory: { summary: '', compacted: 0, updatedAt: null },
       messages: [], createdAt: U.now(), updatedAt: U.now(),
     };
@@ -183,7 +183,7 @@ window.NoteChat = (() => {
       } else if (op.dataset.act === 'append') {
         const i = s.messages.indexOf(msg);
         const user = [...s.messages.slice(0, i)].reverse().find(m => m.role === 'user');
-        RichAsk.appendToNote(user?.text || 'AI 回答', user?.selection || s.context?.selection || '', content, s.noteId);
+        RichAsk.appendToNote(user?.text || 'AI 回答', user?.selection || s.context?.selection || '', content, s.noteId, s.context?.anchor);
       } else if (op.dataset.act === 'retry') {
         retry(msg.id);
       }
@@ -460,11 +460,15 @@ window.NoteChat = (() => {
       activeId = opts.sessionId;
     } else if (opts.newSession || !active() || (active().noteId || null) !== (currentNoteId || null)) {
       const reuse = opts.newSession ? null : latestForNote(currentNoteId);
-      activeId = (reuse || createSession({ noteId: currentNoteId })).id;
+      activeId = (reuse || createSession({ noteId: currentNoteId, selection: opts.selection, anchor: opts.anchor })).id;
     }
     const s = active();
-    if (s && opts.selection) {
-      s.context = { ...(s.context || {}), selection: String(opts.selection).slice(0, 1200) };
+    if (s && (opts.selection || opts.anchor)) {
+      s.context = {
+        ...(s.context || {}),
+        ...(opts.selection ? { selection: String(opts.selection).slice(0, 1200) } : {}),
+        ...(opts.anchor ? { anchor: opts.anchor } : {}),
+      };
       Store.update(COLL, s.id, { context: s.context });
     }
     if (opts.draft !== undefined) els.input.value = opts.draft || '';

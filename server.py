@@ -46,6 +46,7 @@ DEFAULT_DB = {
     "templates": [],  # 做题模板库
     "cards": [],      # 复习卡片（间隔重复）
     "exams": [],      # 模拟考试记录
+    "noteVersions": [],  # 笔记版本历史（手动/自动/永久保存）
 }
 
 DEFAULT_CONFIG = {
@@ -66,6 +67,10 @@ DEFAULT_CONFIG = {
         "recallTopK": 5,        # 快速召回候选数
         "autoMergeConfidence": 0.8,  # LLM 裁决自动归并的置信阈值
         "demoThreshold": 0.55,  # 演示模式（无 LLM）的归并阈值
+    },
+    "notes": {
+        "autoSaveSec": 60,   # 编辑后每 60 秒生成一次自动版本；0 表示只手动保存版本
+        "maxVersions": 20,   # 每篇笔记保留的最新版本数（永久保存版本不计入）
     },
     "prompts": {},  # 提示词覆写（键同前端 prompts.js），空则用前端默认
 }
@@ -267,6 +272,7 @@ class Handler(SimpleHTTPRequestHandler):
             # 保证关键字段结构完整
             cfg.setdefault("ai", DEFAULT_CONFIG["ai"])
             cfg.setdefault("similarity", DEFAULT_CONFIG["similarity"])
+            cfg.setdefault("notes", DEFAULT_CONFIG["notes"])
             cfg.setdefault("prompts", {})
             with _io_lock:
                 save_json(CONFIG_PATH, cfg)

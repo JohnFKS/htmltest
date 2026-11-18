@@ -22,7 +22,7 @@ async function closeAllModals(page) {
 }
 
 async function resetDB() {
-  const db = { meta: { version: 1, app: 'zhixue-notes' }, notes: [], annots: [], banks: [], records: [], entries: [], templates: [], cards: [], exams: [], chatSessions: [] };
+  const db = { meta: { version: 1, app: 'zhixue-notes' }, notes: [], annots: [], banks: [], records: [], entries: [], templates: [], cards: [], exams: [], chatSessions: [], noteVersions: [] };
   const res = await fetch(`${BASE}/api/state`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ db }) });
   return res.ok;
 }

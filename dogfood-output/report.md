@@ -5,7 +5,7 @@
 | **Date** | 2026-11-18 |
 | **App URL** | http://127.0.0.1:8899 |
 | **Session** | notechat-ad45f54631b6 |
-| **Scope** | 选中文本提问、多轮追问、多会话/历史会话、重新生成、追加到笔记、刷新持久化、窄屏布局、真实 API 内容块模拟、控制台错误 |
+| **Scope** | 选中文本提问、多轮追问、多会话/历史会话、长期记忆压缩、笔记手动/自动保存、版本历史与回退、永久保存与清理、按选中位置插入 AI 批注、窄屏布局、真实 API、控制台错误 |
 
 ## Summary
 
@@ -40,6 +40,16 @@
 | 长期记忆压缩（14 条历史） | 通过，压缩 4 条旧消息并生成结构化摘要 | `screenshots/20-memory-summary.png` |
 | 摘要驱动的上下文追问 | 通过，偏好消息已被压缩且未被召回，回答仍准确使用摘要 | `screenshots/21-memory-context-answer.png` |
 | 摘要查看弹窗 | 通过 | `screenshots/22-memory-view.png` |
+| 新版笔记工具栏 | 通过，保存/历史/保存设置分组清晰 | `screenshots/23-new-toolbar.png` |
+| 手动保存版本 | 通过，生成 1 个手动版本并更新状态栏 | `screenshots/24-manual-save.png` |
+| 可配置自动保存 | 通过，设为 1 秒后自动生成版本 | `screenshots/25-auto-save.png` |
+| 版本历史列表 | 通过，展示来源、时间、字符数与操作 | `screenshots/26-history-list.png` |
+| 永久保存版本 | 通过，标记为 🔒 且不被数量清理 | `screenshots/27-pin-version.png` |
+| 历史版本回退 | 通过，恢复内容并生成 restore 版本 | `screenshots/28-restore-version.png` |
+| 版本数量清理 | 通过，仅保留 3 个普通版本，永久版本未受影响 | `screenshots/29-prune-versions.png` |
+| 删除永久保存版本 | 通过，确认后可删除 | `screenshots/30-delete-pinned.png` |
+| 选中文本提问保留锚点 | 通过，`context.anchor` 已持久化 | `screenshots/31-ask-with-anchor.png` |
+| AI 批注插入原文下方 | 通过，插入目标段落之后；原文无 `<mark>` 包裹；CSS Highlight 生效 | `screenshots/32-annotation-inserted.png` |
 
 ## Issues
 
