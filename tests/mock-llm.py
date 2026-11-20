@@ -53,7 +53,7 @@ class Handler(BaseHTTPRequestHandler):
         messages = body.get("messages", [])
         last = messages[-1] if messages else {}
         system_text = next((m.get("content", "") for m in messages if m.get("role") == "system"), "")
-        print(f"[mock-llm] path={self.path} scenario={SCENARIO} last_role={last.get('role')} msgs={len(messages)}", flush=True)
+        print(f"[mock-llm] path={self.path} scenario={SCENARIO} last_role={last.get('role')} msgs={len(messages)} max_tokens={body.get('max_tokens')} tools={len(body.get('tools') or [])}", flush=True)
 
         if last.get("role") == "user":
             call, err = build_tool_call(SCENARIO == "withnoteid", system_text)

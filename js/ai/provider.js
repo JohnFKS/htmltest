@@ -199,6 +199,11 @@ window.AI = (() => {
     return U.asText(resp?.content ?? '');
   }
 
+  // 对话输出上限：配置值过小（如 1000）会截断富 HTML 回答与 tool_calls 参数，这里设 4096 下限
+  function chatMaxTokens() {
+    return Math.min(Math.max(Number(Store.config?.ai?.maxTokens) || 0, 4096), 16000);
+  }
+
   async function callChat({ key, filled, images, model, temperature, maxTokens }) {
     const cfg = Store.config.ai;
     const content = images && images.length
@@ -458,7 +463,7 @@ window.AI = (() => {
       { role: 'user', content: q },
     ];
     if (!useTools) {
-      const raw = await rawChat({ messages });
+      const raw = await rawChat({ messages, max_tokens: chatMaxTokens() });
       return { html: cleanHtml(raw), demo: false, context: stats };
     }
 
@@ -470,6 +475,7 @@ window.AI = (() => {
         messages,
         tools: canEdit ? NOTE_EDIT_TOOLS : NOTE_READ_TOOLS,
         tool_choice: 'auto',
+        max_tokens: chatMaxTokens(),
       }, true);
       if (!res.toolCalls.length) { finalText = res.content; break; }
       messages.push({ role: 'assistant', content: res.content || null, tool_calls: res.toolCalls });

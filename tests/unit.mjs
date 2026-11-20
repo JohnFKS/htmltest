@@ -193,6 +193,23 @@ test('provider：edit_note 支持 noteId 跨笔记定位，read_content 附带�
   assert.match(src, /该笔记的块列表（noteId: \$\{id\}/, '块列表应带 noteId 供模型复用');
 });
 
+test('provider：对话请求显式携带输出上限，防止配置过小导致回复截断', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
+  assert.match(src, /function chatMaxTokens\(\)/, '应有输出上限计算函数');
+  assert.match(src, /Math\.min\(Math\.max\(Number\(Store\.config\?\.ai\?\.maxTokens\) \|\| 0, 4096\), 16000\)/, '输出上限应设 4096 下限');
+  assert.match(src, /max_tokens: chatMaxTokens\(\)/, '对话与工具循环请求都应携带 max_tokens');
+});
+
+test('note-chat：编辑模式不再要求处于笔记页，普通模式仍禁用编辑', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
+  assert.match(src, /const useAgent = agentMode && Store\.aiLive\(\) && !!note;/, '编辑模式应在任意视图生效（离线路径兜底）');
+});
+
+test('prompts：agent 模板含工具报错重试规则', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
+  assert.match(src, /不要因报错就声称自己没有编辑权限/, '报错后应修正重试而非误报无权限');
+});
+
 test('rich-ask：跨笔记编辑（noteId 解析 / 离线保存 / ai-agent 快照 / 确认框显示目标笔记）', () => {
   const src = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
   assert.match(src, /function executeNoteEdit\(\{ action, html, title, blockIndex, reason, noteId \}\)/);

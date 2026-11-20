@@ -528,7 +528,8 @@ window.NoteChat = (() => {
     };
     try {
       const note = noteOf(s);
-      const useAgent = agentMode && Store.aiLive() && !!note && App.currentView === 'notes';
+      // 编辑模式在任意视图生效：未打开的笔记由 executeNoteEdit 离线路径直接写入（不再要求必须在笔记页）
+      const useAgent = agentMode && Store.aiLive() && !!note;
       // @ 引用与全局检索：refsText 携带引用全文，digest 让模型知道全局有什么，onRead 供 search/read 工具
       const refs = opts.refs || [];
       const refsText = refs.map(r => NoteRefs.resolve(r).text).join('\n\n');
