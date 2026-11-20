@@ -196,6 +196,7 @@ Views.notes = {
       restoreSnap(redoStack.pop());
     };
     this._undo = { undo: doUndo, redo: doRedo, counts: () => ({ u: undoStack.length, r: redoStack.length }), sync: syncSnap };
+    this._createVersion = createVersion;
 
     editor.addEventListener('input', () => { pushUndoSoon(); afterEdit(); });
     editor.addEventListener('click', e => {

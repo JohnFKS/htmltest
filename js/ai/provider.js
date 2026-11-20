@@ -186,9 +186,16 @@ window.AI = (() => {
     });
   }
 
-  // 服务端代理返回 {content, usage}；content 可能是字符串、内容块数组或对象，统一取文本
-  async function rawChat(payload) {
+  // 服务端代理返回 {content, tool_calls, usage}；content 可能是字符串、内容块数组或对象，统一取文本
+  async function rawChat(payload, raw = false) {
     const resp = await Api.aiChat(payload);
+    if (raw) {
+      return {
+        content: U.asText(resp?.content ?? ''),
+        toolCalls: Array.isArray(resp?.tool_calls) ? resp.tool_calls : [],
+        usage: resp?.usage || {},
+      };
+    }
     return U.asText(resp?.content ?? '');
   }
 
@@ -307,15 +314,70 @@ window.AI = (() => {
     return { html: cleanHtml(await callChat({ key: 'ctxAsk', filled: prompt })), demo: false };
   }
 
+  // Function calling：笔记编辑工具定义（模型只能请求这些受控操作，实际执行由前端 NoteAgent 完成）
+  const NOTE_EDIT_TOOLS = [{
+    type: 'function',
+    function: {
+      name: 'edit_note',
+      description: '编辑当前笔记。需要修改笔记正文/标题时调用此工具；用户只是提问时不要调用。每次调用只做一个操作。',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: {
+            type: 'string', enum: ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title'],
+            description: 'replace_selection=改写用户选中的文本；replace_block=改写第 blockIndex 个块；insert_after_block=在第 blockIndex 块后插入；append=追加到末尾；replace_all=重写整篇（慎用）；rename_title=改标题',
+          },
+          html: { type: 'string', description: '要写入的受控 HTML 片段（replace_all 时为整篇 HTML）。禁止 script/style/img/a/id/事件属性，可用 p/h4-h6/ul/ol/li/table/b/strong/i/em/mark/code/pre/blockquote/span 及 $公式$。' },
+          title: { type: 'string', description: 'rename_title 时的新标题' },
+          blockIndex: { type: 'integer', minimum: 0, description: '块序号，从 0 开始，对应【笔记块列表】里的编号' },
+          reason: { type: 'string', description: '用一句话说明这次编辑做了什么，展示给用户确认' },
+        },
+        required: ['action', 'reason'],
+      },
+    },
+  }];
+
+  async function toolResult(call, onToolCall) {
+    const fn = call?.function || {};
+    const name = String(fn.name || '');
+    if (name !== 'edit_note') return { ok: false, error: `未知工具：${name}` };
+    let args = {};
+    try { args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments || '{}') : (fn.arguments || {}); }
+    catch (e) { return { ok: false, error: '工具参数不是合法 JSON' }; }
+    const action = String(args.action || '');
+    if (!['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title'].includes(action)) {
+      return { ok: false, error: `不支持的操作：${action}` };
+    }
+    if (action === 'rename_title') {
+      if (!String(args.title || '').trim()) return { ok: false, error: '新标题不能为空' };
+    } else if (!String(args.html || '').trim() && action !== 'replace_all') {
+      return { ok: false, error: '缺少 html 内容' };
+    }
+    try {
+      return await onToolCall({
+        action,
+        html: cleanHtml(String(args.html || '')),
+        title: String(args.title || '').trim(),
+        blockIndex: Number.isInteger(args.blockIndex) ? args.blockIndex : null,
+        reason: String(args.reason || '编辑笔记').slice(0, 200),
+      });
+    } catch (e) {
+      return { ok: false, error: e.message || '编辑执行失败' };
+    }
+  }
+
   // 笔记右侧对话栏：长期记忆摘要 + 焦点笔记 + 近期轮次 + 相关历史召回
-  async function ctxChat({ noteTitle, noteText, selection, question, history = [], summary = '' }) {
+  // onToolCall 存在时启用 function calling：模型可请求受控的笔记编辑，循环执行工具直到给出最终文本。
+  async function ctxChat({ noteTitle, noteText, selection, question, history = [], summary = '', onToolCall = null, noteBlocks = '' }) {
     const q = U.asText(question || '').trim();
     if (!q) throw new Error('问题不能为空');
     const { recent, recallText, stats } = assembleHistory(history, q);
     if (!live()) return Mock.ctxChat({ noteTitle, selection, question: q, history, summary, context: stats });
-    let system = fill(Store.prompt('ctxChat'), {
+    const useTools = typeof onToolCall === 'function';
+    let system = fill(Store.prompt(useTools ? 'ctxChatAgent' : 'ctxChat'), {
       noteTitle: U.asText(noteTitle || '当前笔记').slice(0, 80),
       noteText: noteExcerpt(noteText, selection),
+      noteBlocks: U.asText(noteBlocks || '（无块信息）').slice(0, 12000),
       selection: U.asText(selection || '').slice(0, 1500) || '（本轮没有选中文本）',
       summary: U.asText(summary || '').slice(0, 2500) || '（暂无长期记忆摘要）',
       question: q,
@@ -326,8 +388,34 @@ window.AI = (() => {
       ...recent,
       { role: 'user', content: q },
     ];
-    const raw = await rawChat({ messages });
-    return { html: cleanHtml(raw), demo: false, context: stats };
+    if (!useTools) {
+      const raw = await rawChat({ messages });
+      return { html: cleanHtml(raw), demo: false, context: stats };
+    }
+
+    // 工具循环：最多 4 轮，防止模型反复调用造成无限循环
+    const edits = [];
+    let finalText = '';
+    for (let round = 0; round < 4; round++) {
+      const res = await rawChat({
+        messages,
+        tools: NOTE_EDIT_TOOLS,
+        tool_choice: 'auto',
+      }, true);
+      if (!res.toolCalls.length) { finalText = res.content; break; }
+      messages.push({ role: 'assistant', content: res.content || null, tool_calls: res.toolCalls });
+      for (const call of res.toolCalls) {
+        const result = await toolResult(call, onToolCall);
+        edits.push({ name: call?.function?.name || 'edit_note', args: call?.function?.arguments || '', result });
+        messages.push({ role: 'tool', tool_call_id: call.id || U.uid('call'), content: JSON.stringify(result) });
+      }
+      if (round === 3) finalText = '已完成本轮允许的笔记编辑。';
+    }
+    const okCount = edits.filter(e => e.result?.ok).length;
+    const prefix = okCount
+      ? `<p class="hl-good">已按你的要求编辑笔记（成功 ${okCount} 项${edits.length > okCount ? `、跳过 ${edits.length - okCount} 项` : ''}，编辑前已存版本快照，可在「历史」中恢复）。</p>`
+      : '';
+    return { html: prefix + cleanHtml(finalText), demo: false, context: stats, edits };
   }
 
   // 把旧对话压缩为长期记忆摘要（ConversationSummaryBuffer 风格）
@@ -366,5 +454,5 @@ window.AI = (() => {
     return { md: t, demo: false };
   }
 
-  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse, ctxAsk, ctxChat, compactChat, makeCards, pdfNotes };
+  return { live, extractJson, cleanHtml, urlToData, grade, essence, tags, templateGen, expand, verdict, ask, bankParse, ctxAsk, ctxChat, compactChat, makeCards, pdfNotes, NOTE_EDIT_TOOLS };
 })();

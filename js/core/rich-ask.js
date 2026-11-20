@@ -183,5 +183,75 @@ window.RichAsk = (() => {
     UI.toast(`已追加到笔记「${note.title}」`);
   }
 
-  return { openAsk, appendToNote };
+  // ---------- Function calling 工具执行器：AI 直接编辑笔记（受控块操作） ----------
+  const BLOCK_RE = /^(P|LI|BLOCKQUOTE|H1|H2|H3|H4|H5|H6|PRE|DIV|HR|TABLE|FIGURE|UL|OL|TR|FIGCAPTURE)$/;
+  const noteBlocks = () => {
+    const note = Store.find('notes', Views.notes?.currentId || '');
+    const holder = document.createElement('div');
+    holder.innerHTML = Sanitize.html(note?.content || '');
+    const blocks = [...holder.children].filter(el => BLOCK_RE.test(el.tagName));
+    return blocks.map((el, i) => `${i}. <${el.tagName.toLowerCase()}> ${U.stripHtml(el.outerHTML).replace(/\s+/g, ' ').trim().slice(0, 140) || '（空块）'}`).join('\n');
+  };
+
+  async function executeNoteEdit({ action, html, title, blockIndex, reason }) {
+    if (!Store.aiLive()) return { ok: false, error: '演示模式不支持编辑笔记，请先在设置里配置真实 AI' };
+    const note = Store.find('notes', Views.notes?.currentId || '');
+    if (!note) return { ok: false, error: '当前没有打开的笔记' };
+    if (App.currentView !== 'notes') return { ok: false, error: '请先切到笔记页，才能执行编辑' };
+    const editor = document.getElementById('editor-area');
+    const titleInput = document.getElementById('note-title');
+    if (!editor || !titleInput) return { ok: false, error: '编辑器未就绪' };
+
+    const label = { replace_selection: '改写选中文本', replace_block: '改写指定块', insert_after_block: '在指定块后插入', append: '追加到末尾', replace_all: '重写整篇', rename_title: '修改标题' }[action] || action;
+    const hint = title ? `新标题「${title}」` : (html ? `内容：${U.stripHtml(html).replace(/\s+/g, ' ').slice(0, 90)}…` : '');
+    if (!await UI.confirm(`AI 请求：${label}。\n理由：${reason}\n${hint}\n\n执行前会自动保存一个版本快照，确定允许？`, { danger: action === 'replace_all' })) {
+      return { ok: false, error: '用户取消了这次编辑' };
+    }
+    Views.notes._createVersion?.('ai-agent');
+
+    const safe = Sanitize.html(html || '');
+    let changed = true;
+    if (action === 'rename_title') {
+      if (!title) return { ok: false, error: '新标题为空' };
+      titleInput.value = title;
+    } else if (action === 'append') {
+      editor.insertAdjacentHTML('beforeend', safe || '<p></p>');
+    } else if (action === 'replace_all') {
+      editor.innerHTML = safe || '<p></p>';
+    } else if (action === 'replace_block' || action === 'insert_after_block') {
+      const blocks = [...editor.children].filter(el => BLOCK_RE.test(el.tagName));
+      const target = blocks[blockIndex ?? -1];
+      if (!target) return { ok: false, error: `块编号 ${blockIndex} 不存在（共 ${blocks.length} 块）` };
+      if (action === 'insert_after_block') target.insertAdjacentHTML('afterend', safe || '<p></p>');
+      else target.outerHTML = safe || '<p></p>';
+    } else if (action === 'replace_selection') {
+      const anchor = NoteChat?.getAnchor?.() || null;
+      let range = null;
+      if (anchor) {
+        const s = nodeAtPath(editor, anchor.startPath), e = nodeAtPath(editor, anchor.endPath);
+        if (s && e && editor.contains(s) && editor.contains(e)) {
+          try { range = document.createRange(); range.setStart(s, anchor.startOffset || 0); range.setEnd(e, anchor.endOffset || 0); } catch (err) { range = null; }
+        }
+      }
+      if (!range) {
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed && sel.rangeCount && editor.contains(sel.anchorNode)) range = sel.getRangeAt(0);
+      }
+      if (!range) return { ok: false, error: '找不到要改写的选中文本，请在笔记中重新选中后再试' };
+      range.deleteContents();
+      const frag = range.createContextualFragment(safe || '<span></span>');
+      range.insertNode(frag);
+    } else {
+      changed = false;
+    }
+    if (!changed) return { ok: false, error: '未知操作' };
+
+    Ktx.renderMath(editor);
+    Views.notes._undo?.sync();
+    Views.notes._markDirty?.();
+    Store.update('notes', note.id, { title: titleInput.value.trim() || '未命名笔记', content: editor.innerHTML });
+    return { ok: true, message: `${label}完成，已存版本快照` };
+  }
+
+  return { openAsk, appendToNote, noteBlocks, executeNoteEdit };
 })();

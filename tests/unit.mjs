@@ -72,3 +72,27 @@ print('OK' if ok and not bad else 'FAIL')`;
   const out = execFileSync('python3', ['-c', probe], { encoding: 'utf8' });
   assert.equal(out.trim(), 'OK');
 });
+
+test('server.py：代理透传 tools 且回传 tool_calls（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'server.py'), 'utf8');
+  assert.match(src, /body\["tools"\] = tools/);
+  assert.match(src, /"tool_calls": tool_calls/);
+  assert.match(src, /payload\.get\("tool_choice"\)/);
+});
+
+test('provider：edit_note 工具定义包含 6 种受控操作（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
+  assert.match(src, /name: 'edit_note'/);
+  for (const op of ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title']) {
+    assert.ok(src.includes(`'${op}'`), `缺少操作 ${op}`);
+  }
+  assert.match(src, /for \(let round = 0; round < 4; round\+\+\)/, '工具循环应有轮次上限');
+});
+
+test('工具执行器：替换块操作使用 Sanitize.html 消毒（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
+  assert.match(src, /async function executeNoteEdit/);
+  assert.match(src, /Views\.notes\._createVersion\?\.\('ai-agent'\)/, '编辑前应存版本快照');
+  assert.match(src, /const safe = Sanitize\.html\(html/);
+  assert.match(src, /UI\.confirm/);
+});

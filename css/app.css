@@ -655,6 +655,7 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
   border-radius: 6px; cursor: pointer; font-size: 16px; color: var(--ink-2); font-family: var(--font);
 }
 .chat-icon-btn:hover { background: var(--primary-soft); color: var(--primary); border-color: var(--line); }
+.chat-icon-btn.on { background: var(--primary); color: #fff; border-color: var(--primary); }
 .chat-icon-btn:disabled { opacity: .45; cursor: not-allowed; background: none; color: var(--ink-3); }
 .chat-body { flex: 1; display: flex; min-height: 0; }
 .chat-rail {
@@ -747,6 +748,10 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
 }
 .chat-msg-col { flex: 1; min-width: 0; }
 .chat-msg-ai .chat-bubble { width: 100%; max-width: 100%; background: var(--surface); }
+/* AI 直接编辑笔记的操作日志（function calling） */
+.chat-edit-log { display: flex; flex-direction: column; gap: 3px; margin-bottom: 5px; padding: 6px 9px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); font-size: 12px; }
+.chat-edit-item.ok { color: var(--primary); }
+.chat-edit-item.fail { color: var(--danger); }
 .chat-msg-ops { display: flex; gap: 12px; padding: 3px 2px 0; }
 .chat-msg-ops button {
   border: none; background: none; padding: 0; color: var(--ink-3);

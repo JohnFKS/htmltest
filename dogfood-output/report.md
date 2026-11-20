@@ -285,3 +285,39 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
 | 3 视口 × 9 页面横向溢出 | 全部 ALL_OK | 脚本巡检 |
 
 ---
+
+## 第六轮：完整 Function Calling（AI Agent 直接编辑笔记）
+
+| Field | Value |
+|-------|-------|
+| **Session** | displayaudit-ad45f54631b6 |
+| **范围** | tools 透传、edit_note 工具 schema、工具循环、受控块编辑、逐项确认、版本快照、端到端真代理链路 |
+
+### 实现要点
+
+| 层 | 实现 |
+|----|------|
+| 后端 `server.py` | `/api/ai/chat` 代理白名单透传 `tools` / `tool_choice`；回传 `tool_calls` 原样数组（content 为 null 时归一化为空串） |
+| 前端 `js/ai/provider.js` | `rawChat(payload, raw)` 可返回 `{content, toolCalls, usage}`；定义 `NOTE_EDIT_TOOLS`（`edit_note`，6 种 action）；`ctxChat` 收到 `onToolCall` 时进入最多 4 轮工具循环，逐条校验 name/arguments 后执行，工具结果以 `role:tool` 回灌 |
+| 工具执行 `js/core/rich-ask.js` | `executeNoteEdit`：校验已配置真实 AI、在笔记页、目标笔记存在；`UI.confirm` 展示 reason + 内容摘要逐项确认；执行前 `Views.notes._createVersion('ai-agent')`；支持 replace_selection（按锚点定位 Range）/ replace_block / insert_after_block / append / replace_all / rename_title；写入前 `Sanitize.html()` 二次消毒 |
+| 对话栏 `js/core/note-chat.js` | 头部 `✎` 切换编辑模式（按钮高亮 + 标题栏标注）；`generate` 在编辑模式 + 真实 AI + 笔记页时带 `noteBlocks` 与 `onToolCall` 调用；助手消息显示每条编辑成功/失败日志 |
+| 提示词 `js/ai/prompts.js` | 新增 `ctxChatAgent`（含块列表、工具使用规则、安全约束），设置页可编辑 |
+| 样式 `css/app.css` | 编辑模式按钮 `.on` 状态、`.chat-edit-log` 成功/失败配色 |
+| 测试 `tests/unit.mjs` | 新增 3 项源码契约测试（proxy 透传 / 工具 schema / 执行器消毒与快照） |
+
+### 复测结果
+
+| 检查项 | 结果 | 证据 |
+|--------|------|------|
+| 工具 schema（1 个工具 6 种操作）、编辑模式开关 | 通过 | 浏览器 eval |
+| Stub 工具响应：2 次调用、首轮带 tools、次轮含 role:tool、确认 1 次、正文写入、编辑日志 1 条 | 通过 | 浏览器 eval |
+| 编辑前存版本快照（source=ai-agent，且快照为编辑前状态） | 通过 | 浏览器 eval |
+| 用户取消：不写入、显示失败日志、无虚假"已编辑"提示 | 通过 | 浏览器 eval |
+| 真实代理链路：本地假上游 + server.py 代理，首轮回传 tool_calls、次轮带 tool 结果，浏览器端完成写入与最终回复 | 通过 | `curl` + 浏览器 eval |
+| 端到端视觉（编辑模式、编辑日志） | 通过 | `screenshots/71-note-agent-mode.png` |
+| 单测 8/8、py_compile | 通过 | 终端输出 |
+| 6 视口 × 9 页面横向溢出 | 全部 ALL_OK | 脚本巡检 |
+
+> 测试后已清理注入的测试段落，并把本地 AI 配置中的非密钥字段还原（API Key 不写入任何测试产物）。
+
+---

@@ -13,6 +13,7 @@ window.NoteChat = (() => {
   let pending = false;
   let compacting = false;
   let chatWidth = 460;
+  let agentMode = false;   // 编辑模式：允许 AI 通过 tool_calls 直接改笔记（需逐项确认）
 
   function setChatWidth(w, persist = true) {
     const max = Math.max(360, Math.min(760, window.innerWidth - 260));
@@ -84,6 +85,7 @@ window.NoteChat = (() => {
           </div>
         </div>
         <div class="chat-head-ops">
+          <button class="chat-icon-btn" data-act="agent" title="编辑模式：允许 AI 直接改笔记（逐项确认）">✎</button>
           <button class="chat-icon-btn" data-act="compact" title="压缩历史上下文">🧠</button>
           <button class="chat-icon-btn" data-act="history" title="历史对话">🕘</button>
           <button class="chat-icon-btn" data-act="new" title="新建对话">＋</button>
@@ -113,6 +115,7 @@ window.NoteChat = (() => {
     els = {
       title: drawer.querySelector('#chat-title'),
       sub: drawer.querySelector('#chat-sub'),
+      agent: drawer.querySelector('.chat-head [data-act="agent"]'),
       compact: drawer.querySelector('.chat-head [data-act="compact"]'),
       rail: drawer.querySelector('#chat-rail'),
       memory: drawer.querySelector('#chat-memory'),
@@ -151,6 +154,11 @@ window.NoteChat = (() => {
       const op = e.target.closest('[data-act]');
       if (!op) return;
       if (op.dataset.act === 'close') close();
+      else if (op.dataset.act === 'agent') {
+        agentMode = !agentMode;
+        UI.toast(agentMode ? '编辑模式已开启：可直接让 AI 改笔记，每项编辑会先征得你确认' : '已退出编辑模式', agentMode ? 'success' : 'info');
+        renderAll();
+      }
       else if (op.dataset.act === 'compact') compactNow(active());
       else if (op.dataset.act === 'new') newSession();
       else if (op.dataset.act === 'history') drawer.classList.toggle('show-history');
@@ -243,7 +251,9 @@ window.NoteChat = (() => {
     const note = noteOf(s) || noteById(currentNoteId);
     const mem = memoryOf(s);
     els.title.textContent = s?.title || '新对话';
-    els.sub.textContent = `${note?.title || '通用问答'} · ${s?.messages?.length || 0} 条 · 摘要 ${mem.compacted || 0} 条 · ${Store.aiLive() ? 'AI 已连接' : '演示模式'}`;
+    els.sub.textContent = `${note?.title || '通用问答'} · ${s?.messages?.length || 0} 条 · 摘要 ${mem.compacted || 0} 条 · ${Store.aiLive() ? 'AI 已连接' : '演示模式'}${agentMode ? ' · 编辑模式' : ''}`;
+    els.agent?.classList.toggle('on', agentMode);
+    if (els.agent) els.agent.title = agentMode ? '编辑模式已开启：点击关闭' : '编辑模式：允许 AI 直接改笔记（逐项确认）';
   }
 
   function renderMemory() {
@@ -315,6 +325,8 @@ window.NoteChat = (() => {
       return `<div class="chat-msg chat-msg-ai">
         <div class="chat-avatar ai">✒</div>
         <div class="chat-msg-col">
+          ${m.edits?.length ? `<div class="chat-edit-log">${m.edits.map(x =>
+            `<div class="chat-edit-item ${x.result?.ok ? 'ok' : 'fail'}">${x.result?.ok ? '✓' : '✕'} ${U.esc((x.args && (() => { try { return JSON.parse(x.args).reason || JSON.parse(x.args).action; } catch (_) { return '编辑'; } })()) || '编辑')}${x.result?.error ? ' · ' + U.esc(x.result.error) : ''}</div>`).join('')}</div>` : ''}
           <div class="chat-bubble ai-report">${Sanitize.html(answer)}</div>
           <div class="chat-msg-ops">
             <button data-act="copy" data-id="${m.id}">复制</button>
@@ -394,18 +406,30 @@ window.NoteChat = (() => {
     };
     try {
       const note = noteOf(s);
-      const res = await AI.ctxChat({
-        noteTitle: s.noteTitle || note?.title || '当前笔记',
-        noteText: noteText(note),
-        selection,
-        question,
-        history,
-        summary: memoryOf(s).summary,
-      });
+      const useAgent = agentMode && Store.aiLive() && !!note && App.currentView === 'notes';
+      const res = useAgent
+        ? await AI.ctxChat({
+          noteTitle: s.noteTitle || note?.title || '当前笔记',
+          noteText: noteText(note),
+          noteBlocks: RichAsk.noteBlocks(),
+          selection,
+          question,
+          history,
+          summary: memoryOf(s).summary,
+          onToolCall: RichAsk.executeNoteEdit,
+        })
+        : await AI.ctxChat({
+          noteTitle: s.noteTitle || note?.title || '当前笔记',
+          noteText: noteText(note),
+          selection,
+          question,
+          history,
+          summary: memoryOf(s).summary,
+        });
       const html = U.asText(res?.html ?? '');
       insert({
         id: U.uid('msg'), role: 'assistant', html, text: U.stripHtml(html),
-        demo: !!res?.demo, context: res?.context || null, createdAt: U.now(),
+        demo: !!res?.demo, context: res?.context || null, edits: res?.edits || null, createdAt: U.now(),
       });
       Store.update(COLL, s.id, { messages: s.messages });
       await maybeCompact(s);
@@ -532,5 +556,7 @@ window.NoteChat = (() => {
     renderAll();
   }
 
-  return { open, close, toggle, newSession, compactNow, onNoteChange, get isOpen() { return isOpen(); } };
+  const getAnchor = () => active()?.context?.anchor || null;
+
+  return { open, close, toggle, newSession, compactNow, onNoteChange, getAnchor, get isOpen() { return isOpen(); } };
 })();

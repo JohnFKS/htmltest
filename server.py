@@ -189,6 +189,12 @@ def proxy_ai(payload: dict, cfg: dict, kind: str) -> dict:
             "temperature": payload.get("temperature", ai.get("temperature", 0.4)),
             "max_tokens": payload.get("max_tokens", ai.get("maxTokens", 4096)),
         }
+        # Function calling：透传 tools / tool_choice（仅接受白名单结构，避免把任意字段转发上游）
+        tools = payload.get("tools")
+        if isinstance(tools, list) and all(isinstance(t, dict) and t.get("type") == "function" for t in tools):
+            body["tools"] = tools
+            if payload.get("tool_choice") in ("auto", "none", "required") or isinstance(payload.get("tool_choice"), dict):
+                body["tool_choice"] = payload["tool_choice"]
         if not body["model"]:
             raise RuntimeError("未设置对话模型（chatModel）")
     else:
@@ -213,10 +219,15 @@ def proxy_ai(payload: dict, cfg: dict, kind: str) -> dict:
 
     if kind == "chat":
         try:
-            content = chat_text(result["choices"][0]["message"]["content"])
+            msg = result["choices"][0]["message"]
+            content = chat_text(msg.get("content"))
         except (KeyError, IndexError, TypeError):
             raise RuntimeError(f"上游返回结构异常：{json.dumps(result, ensure_ascii=False)[:300]}")
-        return {"content": content, "usage": result.get("usage", {})}
+        # tool_calls 原样回传：前端负责校验 name/arguments 并执行
+        tool_calls = msg.get("tool_calls") or []
+        if not isinstance(tool_calls, list):
+            tool_calls = []
+        return {"content": content, "tool_calls": tool_calls, "usage": result.get("usage", {})}
     try:
         vectors = [item["embedding"] for item in result["data"]]
     except (KeyError, TypeError):
