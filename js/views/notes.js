@@ -7,11 +7,11 @@ Views.notes = {
     const notes = Store.coll('notes');
     container.innerHTML = `
       <div class="notes-layout">
-        <div class="notes-list">
+        <div class="notes-list" data-pane="side">
           <button class="btn btn-primary" id="note-new" style="width:100%;margin-bottom:12px">＋ 新建笔记</button>
           <div id="note-list"></div>
         </div>
-        <div class="notes-editor">
+        <div class="notes-editor" data-pane="main">
           <div class="note-editor-head">
             <input class="note-title-input" id="note-title" placeholder="笔记标题…">
             <div class="note-head-actions">
@@ -32,6 +32,8 @@ Views.notes = {
           <div class="muted" style="margin-top:8px" id="note-status"></div>
         </div>
       </div>`;
+
+    this._panes = Panes.bind(container.querySelector('.notes-layout'), { key: 'notes', initial: 260, min: 200, max: 420 });
 
     const listEl = container.querySelector('#note-list');
     const editor = container.querySelector('#editor-area');

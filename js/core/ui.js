@@ -18,10 +18,11 @@ window.UI = (() => {
    * raw=false（默认）：body 先经白名单消毒（用于拼接了 AI/用户内容且未预消毒的场景）
    * raw=true：body 为应用内部构造的可信 HTML（动态字符串已 U.esc、AI HTML 已过 provider.cleanHtml）
    */
-  function modal({ title = '', body = '', width = 680, raw = false, actions = [], onClose }) {
+  function modal({ title = '', body = '', width = 680, raw = false, actions = [], onClose, resizable = true }) {
     const root = document.getElementById('modal-root');
     const mask = document.createElement('div');
     mask.className = 'modal-mask';
+    const canResize = resizable && width >= 520;
     mask.innerHTML = `
       <div class="modal" style="max-width:${width}px">
         <div class="modal-head">
@@ -30,6 +31,7 @@ window.UI = (() => {
         </div>
         <div class="modal-body"></div>
         <div class="modal-foot"></div>
+        ${canResize ? '<div class="modal-resize-grip" title="拖拽调整大小 · 双击恢复"></div>' : ''}
       </div>`;
     const bodyEl = mask.querySelector('.modal-body');
     if (raw) bodyEl.innerHTML = body;
@@ -47,6 +49,36 @@ window.UI = (() => {
       btn.textContent = act.label;
       btn.onclick = () => act.onClick ? act.onClick(close) : close();
       foot.prepend(btn);
+    }
+    if (canResize) {
+      const modalEl = mask.querySelector('.modal');
+      const grip = mask.querySelector('.modal-resize-grip');
+      const defaultW = Math.min(width, window.innerWidth - 32);
+      modalEl.style.width = defaultW + 'px';
+      modalEl.style.maxWidth = 'none';
+      const reset = () => { modalEl.style.width = defaultW + 'px'; modalEl.style.height = ''; modalEl.style.maxHeight = ''; };
+      grip.addEventListener('dblclick', reset);
+      grip.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        grip.setPointerCapture(e.pointerId);
+        const rect = modalEl.getBoundingClientRect();
+        const sx = e.clientX, sy = e.clientY;
+        const onMove = ev => {
+          const w = Math.max(360, Math.min(window.innerWidth - 32, rect.width + ev.clientX - sx));
+          const h = Math.max(240, Math.min(window.innerHeight * 0.92, rect.height + ev.clientY - sy));
+          modalEl.style.width = w + 'px';
+          modalEl.style.maxHeight = 'none';
+          modalEl.style.height = h + 'px';
+        };
+        const onUp = () => {
+          grip.removeEventListener('pointermove', onMove);
+          grip.removeEventListener('pointerup', onUp);
+          grip.removeEventListener('pointercancel', onUp);
+        };
+        grip.addEventListener('pointermove', onMove);
+        grip.addEventListener('pointerup', onUp);
+        grip.addEventListener('pointercancel', onUp);
+      });
     }
     root.appendChild(mask);
     return { close, el: mask, bodyEl };

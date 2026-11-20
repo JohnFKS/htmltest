@@ -280,7 +280,7 @@ Views.quiz = {
     st.qIndex = Math.min(st.qIndex, bank.questions.length - 1);
     panel.innerHTML = `
       <div class="quiz-layout">
-        <div class="quiz-side">
+        <div class="quiz-side" data-pane="side">
           <div class="card" style="padding:12px">
             <div class="field-label">题库</div>
             <select class="select" id="bank-select">
@@ -294,8 +294,9 @@ Views.quiz = {
             <button class="btn btn-ghost btn-sm" id="del-bank" style="margin-top:8px;color:var(--danger)">删除当前题库</button>
           </div>
         </div>
-        <div id="q-main"></div>
+        <div id="q-main" data-pane="main"></div>
       </div>`;
+    Panes.bind(panel.querySelector('.quiz-layout'), { key: 'quiz', initial: 250, min: 180, max: 380 });
     panel.querySelector('#bank-select').onchange = e => { st.bankId = e.target.value; st.qIndex = 0; this.renderTab(panel.closest('#quiz-body') || panel.parentElement); };
     panel.querySelector('#rename-bank').onclick = async () => {
       const name = await UI.prompt('重命名题库', bank.name);

@@ -27,7 +27,7 @@ Views.annotator = {
     container.innerHTML = `
       <div class="annot-layout">
         <div class="annot-main">
-          <div class="annot-stage-wrap">
+          <div class="annot-stage-wrap" data-pane="main">
             <div class="annot-stage" id="annot-stage">
               <div class="annot-drop" id="annot-drop">
                 <div style="font-size:40px">✂️</div>
@@ -45,7 +45,7 @@ Views.annotator = {
               </div>
             </div>
           </div>
-          <div class="annot-side">
+          <div class="annot-side" data-pane="side">
             <div class="card">
               <div class="card-title">工具</div>
               <div class="tool-grid" id="tool-grid"></div>
@@ -86,6 +86,8 @@ Views.annotator = {
           </div>
         </div>
       </div>`;
+
+    this._panes = Panes.bind(container.querySelector('.annot-main'), { key: 'annotator', side: 'right', initial: 300, min: 240, max: 460 });
 
     // ---------- 元素 ----------
     const stage = container.querySelector('#annot-stage');

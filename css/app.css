@@ -163,7 +163,7 @@ h1.page-title { font-size: 21px; margin: 0 0 4px; }
 /* ---------- toast ---------- */
 .toast-wrap { position: fixed; top: 64px; right: 20px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
 /* 对话栏展开时提示移到栏外/底部，避免遮住顶部操作按钮 */
-body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
+body.chat-open .toast-wrap { top: auto; bottom: 20px; right: calc(var(--chat-width, 460px) + 20px); }
 .toast {
   padding: 10px 16px; border-radius: var(--radius-sm); font-size: 13.5px;
   background: var(--ink); color: #fff; box-shadow: var(--shadow-lg);
@@ -181,9 +181,19 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
   padding: 6vh 16px 16px; overflow-y: auto;
 }
 .modal {
+  position: relative;
   background: var(--surface); border-radius: 14px; width: 100%;
   box-shadow: var(--shadow-lg); display: flex; flex-direction: column; max-height: 88vh;
 }
+.modal-resize-grip {
+  position: absolute; right: 3px; bottom: 3px; width: 18px; height: 18px;
+  cursor: nwse-resize; touch-action: none; z-index: 2;
+}
+.modal-resize-grip::after {
+  content: ''; position: absolute; right: 2px; bottom: 2px; width: 9px; height: 9px;
+  border-right: 2px solid var(--line-2); border-bottom: 2px solid var(--line-2); border-radius: 0 0 3px 0;
+}
+.modal-resize-grip:hover::after { border-color: var(--primary); }
 .modal-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 20px; border-bottom: 1px solid var(--line);
@@ -242,9 +252,47 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
 }
 
 /* ============================================================
+   通用可折叠 / 可拖拽分栏
+   ============================================================ */
+.notes-layout, .annot-main, .quiz-layout {
+  grid-template-columns: var(--pane-side-w, 260px) 8px minmax(0, 1fr);
+  gap: 8px;
+}
+.notes-layout.pane-side-right, .annot-main.pane-side-right, .quiz-layout.pane-side-right {
+  grid-template-columns: minmax(0, 1fr) 8px var(--pane-side-w, 300px);
+}
+.notes-layout.pane-collapsed, .quiz-layout.pane-collapsed {
+  grid-template-columns: 0 8px minmax(0, 1fr);
+}
+.notes-layout.pane-collapsed.pane-side-right,
+.annot-main.pane-collapsed.pane-side-right,
+.quiz-layout.pane-collapsed.pane-side-right {
+  grid-template-columns: minmax(0, 1fr) 8px 0;
+}
+.annot-main.pane-collapsed { grid-template-columns: 0 8px minmax(0, 1fr); }
+.pane-collapsed [data-pane="side"] { display: none; }
+.pane-handle {
+  position: relative; min-width: 8px; cursor: col-resize;
+  display: flex; align-items: center; justify-content: center; touch-action: none;
+}
+.pane-handle::before {
+  content: ''; width: 2px; height: 100%; border-radius: 999px;
+  background: var(--line); transition: background .15s ease, width .15s ease;
+}
+.pane-handle:hover::before, .pane-handle.dragging::before { width: 4px; background: var(--primary); }
+.pane-collapse-btn {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1;
+  width: 18px; height: 38px; padding: 0; border: 1px solid var(--line);
+  border-radius: 999px; background: var(--surface); color: var(--ink-3);
+  font-size: 13px; line-height: 1; cursor: pointer; box-shadow: var(--shadow);
+}
+.pane-collapse-btn:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-select: none !important; }
+
+/* ============================================================
    笔记工作台
    ============================================================ */
-.notes-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; height: calc(100vh - 54px - 44px); }
+.notes-layout { display: grid; height: calc(100vh - 54px - 44px); }
 .notes-list { overflow-y: auto; }
 .note-item {
   padding: 11px 13px; border-radius: var(--radius-sm); cursor: pointer;
@@ -331,7 +379,7 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
    截图批注
    ============================================================ */
 .annot-layout { display: flex; flex-direction: column; gap: 12px; height: calc(100vh - 54px - 44px); }
-.annot-main { display: grid; grid-template-columns: 1fr 300px; gap: 14px; flex: 1; min-height: 0; }
+.annot-main { display: grid; flex: 1; min-height: 0; }
 .annot-stage-wrap { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .annot-stage {
   flex: 1; overflow: auto; background: repeating-conic-gradient(#eceae2 0% 25%, #f6f4ee 0% 50%) 50% / 24px 24px;
@@ -364,7 +412,7 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
 /* ============================================================
    刷题
    ============================================================ */
-.quiz-layout { display: grid; grid-template-columns: 250px 1fr; gap: 16px; }
+.quiz-layout { display: grid; }
 .quiz-side { overflow-y: auto; }
 .quiz-nav-item {
   padding: 8px 12px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13.5px;
@@ -520,13 +568,22 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
    ============================================================ */
 .chat-drawer {
   position: fixed; top: 54px; right: 0; bottom: 0; z-index: 120;
-  width: min(460px, 94vw); display: flex; flex-direction: column;
+  width: min(var(--chat-width, 460px), 94vw); display: flex; flex-direction: column;
   background: var(--surface); border-left: 1px solid var(--line);
   box-shadow: -8px 0 30px rgba(38, 35, 29, .14);
   transform: translateX(102%); transition: transform .22s ease;
   pointer-events: none;
 }
 .chat-drawer.open { transform: none; pointer-events: auto; }
+.chat-resizer {
+  position: absolute; left: -5px; top: 0; bottom: 0; width: 10px; z-index: 2;
+  cursor: col-resize; touch-action: none;
+}
+.chat-resizer::after {
+  content: ''; position: absolute; left: 4px; top: 0; bottom: 0; width: 2px;
+  background: transparent; transition: background .15s ease, width .15s ease;
+}
+.chat-drawer:hover .chat-resizer::after, .chat-resizer.dragging::after { width: 4px; background: var(--primary); }
 .chat-head {
   flex: 0 0 auto; height: 58px; padding: 8px 10px 8px 14px;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -666,14 +723,22 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
 .chat-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .chat-status { flex: 1; min-width: 0; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-error { color: var(--danger); }
-@media (min-width: 1100px) {
-  body.chat-open .view { padding-right: min(480px, 40vw); }
+@media (min-width: 761px) {
+  body.chat-open .view { padding-right: calc(var(--chat-width, 460px) + 22px); }
+  body.chat-open .rich .ai-annotation-card {
+    z-index: 130;
+    width: min(420px, calc(100vw - var(--chat-width, 460px) - 60px));
+  }
 }
 @media (max-width: 700px) {
   .chat-drawer { top: 0; width: 100vw; }
   .chat-drawer.show-history .chat-rail { width: 140px; }
   body.chat-open .view { padding-right: 14px; }
   body.chat-open .toast-wrap { right: 12px; bottom: 12px; }
+}
+@media (min-width: 701px) and (max-width: 760px) {
+  .chat-drawer { width: 52vw; }
+  body.chat-open .view { padding-right: calc(52vw + 12px); }
 }
 
 /* ---------- 仪表盘 ---------- */
@@ -697,7 +762,10 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
 
 /* 响应式 */
 @media (max-width: 900px) {
-  .notes-layout, .quiz-layout, .annot-main { grid-template-columns: 1fr; }
+  .notes-layout, .quiz-layout, .annot-main,
+  .notes-layout.pane-side-right, .quiz-layout.pane-side-right, .annot-main.pane-side-right,
+  .notes-layout.pane-collapsed, .quiz-layout.pane-collapsed, .annot-main.pane-collapsed { grid-template-columns: 1fr; }
+  .pane-handle { display: none; }
   .notes-list, .quiz-side, .annot-side { max-height: 220px; }
   .view { padding: 14px; }
 }

@@ -5,7 +5,7 @@
 | **Date** | 2026-11-18 |
 | **App URL** | http://127.0.0.1:8899 |
 | **Session** | notechat-ad45f54631b6 |
-| **Scope** | 选中文本提问、多轮追问、多会话/历史会话、长期记忆压缩、笔记手动/自动保存、版本历史与回退、永久保存与清理、按选中位置插入 AI 批注、窄屏布局、真实 API、控制台错误 |
+| **Scope** | 选中文本提问、多轮追问、多会话/历史会话、长期记忆压缩、笔记手动/自动保存、版本历史与回退、永久保存与清理、按选中位置插入 AI 批注、悬浮可编辑批注、分栏折叠/拖拽、弹窗缩放、多尺寸避让、真实 API、控制台错误 |
 
 ## Summary
 
@@ -53,6 +53,14 @@
 | 批注默认悬浮折叠 | 通过，卡片默认 `display:none`，只显示标签 | `screenshots/33-hover-collapsed.png` |
 | 悬浮展开与富文本渲染 | 通过，展开后表格 1 个、KaTeX 公式 2 个，与笔记/对话栏同款样式 | `screenshots/34-hover-expanded.png` |
 | 悬浮内容直接编辑 | 通过，修改后自动写入笔记，表格结构保留 | `screenshots/35-hover-edited.png` |
+| 笔记侧栏拖拽 | 通过，260px → 343px 并写入本地偏好 | `screenshots/37-pane-resized.png` |
+| 笔记侧栏折叠/展开 | 通过，网格变为 `0 8px 1fr`，侧栏隐藏 | `screenshots/38-pane-collapsed.png` |
+| 900px 对话栏避让 | 通过，正文右边界 418px < 抽屉左边界 440px | `screenshots/39-chat-900.png` |
+| 760px 对话栏避让 | 通过，正文右边界 353px < 抽屉左边界 365px | `screenshots/40-chat-760.png` |
+| AI 对话栏拖拽 | 通过，460px → 540px 并写入本地偏好 | `screenshots/41-chat-resized.png` |
+| 批注页右侧栏拖拽/折叠 | 通过，300px → 378px，折叠后网格右侧归零 | `screenshots/42-annot-panes.png`, `43-annot-collapsed.png` |
+| 刷题页侧栏折叠 | 通过 | `screenshots/44-quiz-collapsed.png` |
+| 弹窗右下角缩放 | 通过，780×275 → 862×338 | `screenshots/45-modal-resized.png` |
 
 ## Issues
 

@@ -12,6 +12,17 @@ window.NoteChat = (() => {
   let currentNoteId = null;
   let pending = false;
   let compacting = false;
+  let chatWidth = 460;
+
+  function setChatWidth(w, persist = true) {
+    const max = Math.max(360, Math.min(760, window.innerWidth - 260));
+    chatWidth = U.clamp(Number(w) || 460, 360, max);
+    document.documentElement.style.setProperty('--chat-width', chatWidth + 'px');
+    if (persist) {
+      try { localStorage.setItem('zhixue.chatWidth', String(chatWidth)); } catch (e) { /* 隐私模式忽略 */ }
+    }
+  }
+  try { setChatWidth(Number(localStorage.getItem('zhixue.chatWidth')) || 460, false); } catch (e) { setChatWidth(460, false); }
 
   const isOpen = () => !!drawer?.classList.contains('open');
   const all = () => Store.coll(COLL);
@@ -63,6 +74,7 @@ window.NoteChat = (() => {
     drawer.className = 'chat-drawer';
     drawer.id = 'note-chat-drawer';
     drawer.innerHTML = `
+      <div class="chat-resizer" title="拖拽调整宽度 · 双击恢复默认"></div>
       <div class="chat-head">
         <div class="chat-head-main">
           <div class="chat-head-icon">✒</div>
@@ -113,6 +125,27 @@ window.NoteChat = (() => {
     };
 
     Store.on('config-changed', () => { if (isOpen()) renderAll(); });
+
+    const resizer = drawer.querySelector('.chat-resizer');
+    resizer.addEventListener('dblclick', () => setChatWidth(460));
+    resizer.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      resizer.setPointerCapture(e.pointerId);
+      resizer.classList.add('dragging');
+      document.body.classList.add('pane-resizing');
+      const onMove = ev => setChatWidth(window.innerWidth - ev.clientX, false);
+      const onUp = () => {
+        resizer.classList.remove('dragging');
+        document.body.classList.remove('pane-resizing');
+        resizer.removeEventListener('pointermove', onMove);
+        resizer.removeEventListener('pointerup', onUp);
+        resizer.removeEventListener('pointercancel', onUp);
+        setChatWidth(chatWidth);
+      };
+      resizer.addEventListener('pointermove', onMove);
+      resizer.addEventListener('pointerup', onUp);
+      resizer.addEventListener('pointercancel', onUp);
+    });
 
     drawer.querySelector('.chat-head').addEventListener('click', e => {
       const op = e.target.closest('[data-act]');
