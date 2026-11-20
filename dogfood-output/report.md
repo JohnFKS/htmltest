@@ -223,3 +223,31 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
 | 控制台错误 | 无 | `window.error` + `unhandledrejection` 捕获为 `[]` |
 
 ---
+
+## 第四轮：笔记标题/首行遮挡与空间利用（2026-11-20）
+
+| Field | Value |
+|-------|-------|
+| **Session** | displayaudit-ad45f54631b6 |
+| **范围** | 笔记标题显示、正文首行遮挡、工具栏空间压缩、全页面空间利用审计 |
+
+### 根因与修复
+
+| 问题 | 根因 | 修复 |
+|------|------|------|
+| 笔记标题被挤成 73px，只显示「E2E 测」 | `.note-title-input` 为 `flex:1;min-width:0`，被右侧 10 个操作按钮挤压 | 标题改 `flex:1 1 200px;min-width:200px;text-overflow:ellipsis`，操作区改 `flex:1 1 320px;min-width:0`，宽屏同排、窄屏各自换行 |
+| 正文第一行被工具栏盖住 | `.note-editor-top` 为 `position:sticky;top:var(--topbar-h)`，但其父容器 `.notes-editor` 是 `overflow:hidden` 且自身不滚动（只有 `#editor-area` 内部滚动），sticky 偏移 54px 导致头部 bottom 比编辑区 top 低 54px，正好盖住首行 | 改为 `position:static`（编辑区之外，滚动时天然常驻），加 `flex:0 0 auto` |
+| 工具栏第二行仅 3 个按钮，浪费 35px 垂直空间 | 29 个按钮按原间距换行成 26+3 | 按钮 padding 7→5、min-width 30→26、gap 3→2、分隔符 margin 收窄，1440 宽下 29 按钮落在同一行，工具栏 76→41px，编辑区多出 14px |
+
+### 复测结果
+
+| 检查项 | 结果 | 证据 |
+|--------|------|------|
+| 标题完整显示（411px，无截断），各宽度不截断 | 通过 | `screenshots/66-notes-title-firstline-fixed.png`、`68-notes-mobile-title-final.png` |
+| 工具栏底与编辑区顶重叠 = 0，首行可见 | 通过 | `screenshots/66` |
+| 编辑区滚动时工具栏常驻可见 | 通过，scrollTop=3000 工具栏 top=76 | 浏览器 eval |
+| 工具栏单行 29 按钮、编辑区高度 +14px | 通过 | `screenshots/67-notes-title-toolbar-final.png` |
+| 6 视口 × 9 页面横向溢出 | 全部 ALL_OK | 脚本巡检 |
+| 控制台错误 | 无 | eval 捕获 |
+
+---

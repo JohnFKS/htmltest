@@ -315,17 +315,19 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 .note-item-title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .note-item-sub { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
 .notes-editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
-.note-editor-top { position: sticky; top: var(--topbar-h); z-index: 30; background: var(--bg); padding-bottom: 2px; }
+/* 工具栏固定在编辑区顶部：父容器 .notes-editor 不滚动（仅 editor-area 内部滚动），
+   position:sticky + top:非0 会被偏移到顶栏下方并盖住正文首行，故这里用 static 保持文档流 */
+.note-editor-top { position: static; z-index: 5; background: var(--bg); padding-bottom: 2px; flex: 0 0 auto; }
 .note-editor-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-.note-head-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.note-head-actions { display: flex; flex: 1 1 320px; min-width: 0; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 .note-head-sep { width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
 .btn-xs { padding: 2px 8px; font-size: 11.5px; }
 .btn.danger { color: var(--danger); }
 .btn.danger:hover { border-color: var(--danger); background: rgba(178, 58, 49, .08); }
 .note-title-input {
-  flex: 1; min-width: 0; font-size: 17px; font-weight: 700; padding: 8px 12px;
+  flex: 1 1 200px; min-width: 200px; font-size: 17px; font-weight: 700; padding: 8px 12px;
   border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--ink);
-  font-family: var(--font);
+  font-family: var(--font); text-overflow: ellipsis;
 }
 .note-title-input:hover, .note-title-input:focus { border-color: var(--line-2); background: var(--surface); outline: none; }
 
@@ -335,20 +337,20 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 /* 富文本编辑器 */
 .editor-toolbar {
   position: relative;
-  display: flex; flex-wrap: wrap; gap: 3px; padding: 6px;
+  display: flex; flex-wrap: wrap; gap: 2px; padding: 5px;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   border-bottom: none;
 }
 .tb-btn {
-  min-width: 30px; height: 30px; padding: 0 7px; border: none; background: none;
+  min-width: 26px; height: 30px; padding: 0 5px; border: none; background: none;
   border-radius: 6px; cursor: pointer; font-size: 14px; color: var(--ink-2); font-family: var(--font);
   display: inline-flex; align-items: center; justify-content: center; transition: background .12s, color .12s;
 }
 .tb-btn:hover { background: var(--surface-2); color: var(--primary); }
 .tb-btn.on { background: var(--primary-soft); color: var(--primary); }
 .tb-palette-btn { color: var(--accent); }
-.tb-sep { width: 1px; background: var(--line); margin: 4px 4px; }
+.tb-sep { width: 1px; background: var(--line); margin: 4px 3px; }
 /* 高亮 / 文字颜色悬浮色板 */
 .tb-popover {
   position: absolute; top: calc(100% - 2px); left: 0; z-index: 40;
