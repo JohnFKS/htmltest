@@ -544,6 +544,7 @@ window.NoteChat = (() => {
           history,
           summary: memoryOf(s).summary,
           refsText, globalDigest, onRead,
+          noteId: note?.id || '',
           onToolCall: RichAsk.executeNoteEdit,
         })
         : await AI.ctxChat({
@@ -554,6 +555,7 @@ window.NoteChat = (() => {
           history,
           summary: memoryOf(s).summary,
           refsText, globalDigest, onRead,
+          noteId: note?.id || '',
         });
       const html = U.asText(res?.html ?? '');
       const cited = extractRefs(html);

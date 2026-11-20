@@ -156,6 +156,7 @@ python3 server.py
 node --test tests/unit.mjs  # 零依赖单元测试（MD 转换 / 消毒 URL 策略 / 服务器结构校验），无需 npm
 npm i playwright && npx playwright install chromium   # 以下需先装 Playwright
 node tests/e2e.js          # Playwright 场景集（演示模式全流程，含笔记助教多轮对话）
+python3 tests/mock-llm.py nonoteid|withnoteid 9999   # 零依赖 Mock LLM（可返回 tool_calls）：配到设置页 baseUrl=http://127.0.0.1:9999/v1 即可离线端到端测试 Agent 编辑链路
 node tests/test-real-ai.mjs import|features|templates|vision|ask   # 真实 AI 分阶段测试（先在设置页配好 API）
 ```
 

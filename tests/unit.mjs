@@ -186,9 +186,11 @@ test('provider：普通模式具备只读检索工具，edit_note 仅编辑模�
 test('provider：edit_note 支持 noteId 跨笔记定位，read_content 附带块列表', () => {
   const src = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
   assert.match(src, /noteId: \{ type: 'string'/, 'edit_note 应定义 noteId 参数');
-  assert.match(src, /noteId: String\(args\.noteId \|\| ''\)\.trim\(\) \|\| null/, 'toolResult 应透传 noteId');
+  assert.match(src, /required: \['action', 'reason', 'noteId'\]/, 'noteId 应为必填，防止模型漏传时静默改错笔记');
+  assert.match(src, /缺少 noteId（必填）/, '缺 noteId 应报错引导重试，而不是写进当前打开的笔记');
+  assert.match(src, /noteId,\n/, 'toolResult 应透传已校验的 noteId');
   assert.match(src, /onRead\?\.blocks/, 'read_content 应可附加块列表');
-  assert.match(src, /该笔记的块列表/, '块列表应有明确标题供模型定位块编号');
+  assert.match(src, /该笔记的块列表（noteId: \$\{id\}/, '块列表应带 noteId 供模型复用');
 });
 
 test('rich-ask：跨笔记编辑（noteId 解析 / 离线保存 / ai-agent 快照 / 确认框显示目标笔记）', () => {
@@ -209,5 +211,6 @@ test('prompts：ctxChat 模板含 @ 引用/全局摘要占位符与工具说明'
   assert.match(src, /\{globalDigest\}/);
   assert.match(src, /search_content/, '普通模板应说明只读检索工具');
   assert.match(src, /必须传 noteId/, 'agent 模板应说明跨笔记编辑规则');
+  assert.match(src, /（ID：\{noteId\}，调用 edit_note 时作为 noteId 传入）/, 'agent 模板应注入当前笔记 ID 供 edit_note 使用');
   assert.match(src, /能看到的?\s*整个学习项目的全部内容|你能看到整个学习项目的全部内容/, '提示词应声明全局内容视野');
 });

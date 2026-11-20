@@ -256,7 +256,7 @@ ${HTML_RULE}`,
       ctxChatAgent: `你是贴身学习助教，正在和学生围绕一篇笔记进行连续对话，同时你能看到整个学习项目的全部内容（见【全局内容摘要】）。你拥有 edit_note 工具，可以直接编辑这篇笔记。
 
 【当前笔记】
-{noteTitle}
+{noteTitle}（ID：{noteId}，调用 edit_note 时作为 noteId 传入）
 
 【笔记块列表（编号从 0 开始，供 replace_block / insert_after_block 使用）】
 {noteBlocks}
