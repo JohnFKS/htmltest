@@ -12,7 +12,7 @@ window.Sanitize = (() => {
   const DROP_TAGS = new Set(['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'form', 'button', 'video', 'audio', 'svg', 'math', 'base', 'template']);
   const ALLOWED_ATTRS = {
     '*': ['class', 'style', 'border'],
-    a: ['href', 'title', 'target'],
+    a: ['href', 'title', 'target', 'rel'],
     img: ['src', 'alt', 'width', 'height'],
     td: ['colspan', 'rowspan'],
     th: ['colspan', 'rowspan', 'scope'],
@@ -91,7 +91,7 @@ window.Sanitize = (() => {
       if (window.DOMPurify) {
         return DOMPurify.sanitize(String(str), {
           ALLOWED_TAGS: [...ALLOWED_TAGS],
-          ALLOWED_ATTR: ['class', 'href', 'title', 'target', 'src', 'alt', 'width', 'height',
+          ALLOWED_ATTR: ['class', 'href', 'title', 'target', 'rel', 'src', 'alt', 'width', 'height',
             'colspan', 'rowspan', 'scope', 'type', 'checked', 'disabled', 'start', 'open', 'data-tex',
             'contenteditable', 'tabindex', 'style', 'border'],
           ALLOW_DATA_ATTR: false,

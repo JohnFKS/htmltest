@@ -14,9 +14,9 @@ Views.annotator = {
     { c: '#1d7a5f', n: '绿' }, { c: '#ffd54a', n: '黄' }, { c: '#ffffff', n: '白' },
   ],
   TOOLS: [
-    ['pen', '✏', '画笔'], ['hl', '🖍', '荧光'], ['line', '╱', '直线'], ['arrow', '→', '箭头'],
-    ['rect', '▭', '矩形'], ['ellipse', '○', '椭圆'], ['text', 'T', '文字'], ['eraser', '⌫', '擦除'],
-    ['ask', '❓', '圈选提问'],
+    ['pen', 'pen', '画笔'], ['hl', 'highlight', '荧光'], ['line', 'slash', '直线'], ['arrow', 'arrow', '箭头'],
+    ['rect', 'square', '矩形'], ['ellipse', 'circle', '椭圆'], ['text', 'type', '文字'], ['eraser', 'eraser', '擦除'],
+    ['ask', 'help', '圈选提问'],
   ],
 
   async render(container) {
@@ -192,7 +192,7 @@ Views.annotator = {
     // ---------- 工具栏 ----------
     const toolGrid = container.querySelector('#tool-grid');
     toolGrid.innerHTML = this.TOOLS.map(([id, icon, name]) =>
-      `<button class="tool-btn ${this.tool === id ? 'active' : ''}" data-tool="${id}" title="${name}">${icon}</button>`).join('');
+      `<button class="tool-btn ${this.tool === id ? 'active' : ''}" data-tool="${id}" title="${name}" aria-label="${name}">${Icon.svg(icon, 17)}</button>`).join('');
     toolGrid.querySelectorAll('.tool-btn').forEach(btn => btn.onclick = () => {
       this.tool = btn.dataset.tool;
       toolGrid.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === this.tool));

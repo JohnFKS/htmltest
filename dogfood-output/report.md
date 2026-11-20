@@ -185,3 +185,41 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
 | 控制台错误 | 无 | `window.error` + `unhandledrejection` 捕获为 `[]` |
 
 ---
+
+## 第三轮：笔记批注增强与工具图标美化（2026-11-20）
+
+| Field | Value |
+|-------|-------|
+| **Session** | displayaudit-ad45f54631b6 |
+| **范围** | 多色高亮、文字颜色、删除线/上下标/链接/行内代码、Markdown `==高亮==`、SVG 线性图标、消毒与导出兼容、全页面回归 |
+
+在笔记工具栏新增悬浮色板与多种 HTML 批注能力，并把笔记/批注页的操作图标统一为 Lucide 风格内联 SVG。
+
+### 实现要点
+
+| 能力 | 实现 | 兼容处理 |
+|------|------|----------|
+| 多色高亮 | 高亮按钮弹出 8 色色板（含「清除高亮」），`execCommand('hiliteColor')` + `styleWithCSS` | 产出 `background-color` 内联样式，消毒白名单保留 `style`，导出 HTML 原样保留 |
+| 文字颜色 | 6 色悬浮色板，`execCommand('foreColor')` | 同上，`color` 内联样式保留 |
+| 更多 HTML 批注 | 删除线、上标、下标、插入链接、行内代码 | `s/sup/sub/a/code` 均已在消毒白名单；为 `a` 补 `rel` 保证 `noopener` |
+| Markdown 高亮 | 两条渲染路径均支持 `==高亮==` → `<mark>` | `looksLikeMd` 同步识别，粘贴自动转换 |
+| 图标美化 | 新增 `js/core/icons.js`（内联 SVG 集）；笔记工具栏 29 按钮、页面头部 7 按钮、批注工具 9 按钮全部 SVG 化 | 无外部图标库、无 emoji；`index.html` 在视图脚本前引入 |
+| 导出独立 HTML | 补齐 mark/del/sup/sub/a/code/待办/折叠块/hr 样式 | 高亮与批注在脱离应用后仍正确呈现 |
+
+### 复测结果
+
+| 检查项 | 结果 | 证据 |
+|--------|------|------|
+| 图标加载（29 按钮均 SVG、无 emoji 回退） | 通过 | `screenshots/61-notes-svg-toolbar.png`、`62-notes-toolbar-clean.png` |
+| 高亮色板弹出与选色 | 通过，8 色 + 清除，应用后产出 `background-color` | `screenshots/63-highlight-palette.png` |
+| 多色高亮实际渲染 | 通过，绿色高亮正确显示 | `screenshots/64-highlight-applied.png` |
+| 文字颜色 / 删除线 / 上下标 / 链接 | 通过，产出标准内联样式与语义标签 | 浏览器 eval |
+| `==高亮==` Markdown | 通过，输出 `<mark>高亮文字</mark>` | 浏览器 eval |
+| 消毒保留高亮/颜色/安全链接 | 通过，`style`/`mark`/`rel` 均保留 | 浏览器 eval |
+| 高亮保存后刷新仍在 | 通过，`background-color` 持久化 | 浏览器 eval |
+| 色板点击外部关闭 | 通过，真实 pointerdown 后 `hidden=true` | 浏览器 eval |
+| 批注页图标 SVG 化 | 通过，9 个工具均 SVG、无 emoji | `screenshots/65-annotator-svg-tools.png` |
+| 6 视口 × 9 页面横向溢出 | 全部 ALL_OK | 脚本巡检 |
+| 控制台错误 | 无 | `window.error` + `unhandledrejection` 捕获为 `[]` |
+
+---

@@ -8,7 +8,7 @@ Views.notes = {
     container.innerHTML = `
       <div class="notes-layout">
         <div class="notes-list" data-pane="side">
-          <button class="btn btn-primary" id="note-new" style="width:100%;margin-bottom:12px">＋ 新建笔记</button>
+          <button class="btn btn-primary" id="note-new" style="width:100%;margin-bottom:12px">${Icon.svg('plus', 15)} 新建笔记</button>
           <div id="note-list"></div>
         </div>
         <div class="notes-editor" data-pane="main">
@@ -16,16 +16,16 @@ Views.notes = {
             <div class="note-editor-head">
               <input class="note-title-input" id="note-title" placeholder="笔记标题…">
               <div class="note-head-actions">
-                <button class="btn btn-primary btn-sm" id="note-save" title="保存为一个版本（Ctrl+S）">💾 保存</button>
-                <button class="btn btn-ghost btn-sm" id="note-history" title="查看/恢复历史版本，永久保存或删除">🕘 历史</button>
-                <button class="btn btn-ghost btn-sm" id="note-autosave" title="设置自动保存间隔与版本保留数量">⚙ 保存设置</button>
+                <button class="btn btn-primary btn-sm" id="note-save" title="保存为一个版本（Ctrl+S）">${Icon.svg('save', 14)} 保存</button>
+                <button class="btn btn-ghost btn-sm" id="note-history" title="查看/恢复历史版本，永久保存或删除">${Icon.svg('history', 14)} 历史</button>
+                <button class="btn btn-ghost btn-sm" id="note-autosave" title="设置自动保存间隔与版本保留数量">${Icon.svg('settings', 14)} 保存设置</button>
                 <span class="note-head-sep"></span>
                 <button class="btn btn-ghost btn-sm" id="note-md-import" title="把 Markdown 文本转换为富文本块追加到笔记">MD 粘贴转换</button>
-                <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">📄 导入文件</button>
-                <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">📕 导入 PDF</button>
+                <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">${Icon.svg('file', 14)} 导入文件</button>
+                <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">${Icon.svg('book', 14)} 导入 PDF</button>
                 <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
-                <button class="btn btn-ghost btn-sm" id="note-chat-open" title="打开右侧笔记助教：多轮提问与历史对话">💬 笔记助教</button>
-                <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">导出 HTML</button>
+                <button class="btn btn-ghost btn-sm" id="note-chat-open" title="打开右侧笔记助教：多轮提问与历史对话">${Icon.svg('message', 14)} 笔记助教</button>
+                <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">${Icon.svg('download', 14)} 导出 HTML</button>
               </div>
             </div>
             <div class="editor-toolbar" id="editor-toolbar"></div>
@@ -253,7 +253,7 @@ Views.notes = {
     });
 
     // ---------- 工具栏 ----------
-    this.buildToolbar(container.querySelector('#editor-toolbar'), editor, afterEdit, { undo: doUndo, redo: doRedo });
+    const toolbarCleanup = this.buildToolbar(container.querySelector('#editor-toolbar'), editor, afterEdit, { undo: doUndo, redo: doRedo });
 
     // ---------- MD 导入 ----------
     container.querySelector('#note-md-import').onclick = async () => {
@@ -422,6 +422,7 @@ Views.notes = {
       if (autoTimer) clearInterval(autoTimer);
       document.removeEventListener('keydown', onSaveKey);
       window.removeEventListener('resize', placeAllCards);
+      toolbarCleanup?.();
     };
 
     // ---------- 右侧笔记助教 ----------
@@ -438,7 +439,11 @@ Views.notes = {
 <style>body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;max-width:820px;margin:40px auto;padding:0 24px;line-height:1.7;color:#26231d}
 h1{border-bottom:2px solid #e6e1d3;padding-bottom:8px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 12px}
 blockquote{border-left:3px solid #ccc;margin:10px 0;padding:8px 16px;color:#555;background:#f9f8f4}pre{background:#2a2721;color:#eee;padding:12px 16px;border-radius:8px;overflow-x:auto}
-code{font-family:Consolas,monospace}img{max-width:100%}</style></head>
+code{font-family:Consolas,monospace;background:#f4f2ec;padding:1px 5px;border-radius:4px}pre code{background:none;padding:0}img{max-width:100%;border-radius:8px}
+a{color:#2d6a4f}mark{padding:1px 2px;border-radius:3px}del,s{color:#8d8677}sup,sub{font-size:.78em}
+.todo-list{list-style:none;padding-left:6px}.todo-list li{display:flex;align-items:baseline;gap:8px;margin:4px 0}
+details{border:1px solid #e6e1d3;border-radius:7px;padding:8px 14px;margin:10px 0}summary{cursor:pointer;font-weight:600}
+hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}</style></head>
 <body><h1>${U.esc(n.title)}</h1>${Sanitize.html(n.content)}</body></html>`;
       U.download(`${n.title || '笔记'}.html`, html, 'text/html');
     };
@@ -476,51 +481,120 @@ code{font-family:Consolas,monospace}img{max-width:100%}</style></head>
   },
 
   buildToolbar(bar, editor, save, undoApi = {}) {
+    const icon = (name, size = 16) => Icon.svg(name, size);
+    const exec = (cmd, val) => { editor.focus(); document.execCommand(cmd, false, val); };
     const insertHTML = html => {
       editor.focus();
       document.execCommand('insertHTML', false, html);
       Ktx.renderMath(editor);
-      save();
     };
+    // 让 color/hiliteColor 产出稳定的内联 style（而非 font 标签），消毒与导出都能保留
+    const useCss = () => { try { document.execCommand('styleWithCSS', false, true); } catch (e) { /* 老浏览器忽略 */ } };
+
+    const HL_COLORS = [
+      { c: '#fff2a8', n: '黄' }, { c: '#d7f5e3', n: '绿' }, { c: '#d7eaff', n: '蓝' },
+      { c: '#ffd9e6', n: '粉' }, { c: '#e7dcff', n: '紫' }, { c: '#ffe0bf', n: '橙' },
+      { c: '#eceae4', n: '灰' }, { c: 'transparent', n: '清除高亮' },
+    ];
+    const FG_COLORS = [
+      { c: '#26231d', n: '墨色' }, { c: '#bc4b2a', n: '朱红' }, { c: '#2d6a4f', n: '墨绿' },
+      { c: '#3457d5', n: '蓝' }, { c: '#b98a2f', n: '金' }, { c: '#8d8677', n: '灰' },
+    ];
+
     const tools = [
-      { icon: '↩', title: '撤销 (Ctrl+Z)', cmd: undoApi.undo || (() => {}) },
-      { icon: '↪', title: '重做 (Ctrl+Y)', cmd: undoApi.redo || (() => {}) },
+      { icon: 'undo', title: '撤销 (Ctrl+Z)', cmd: undoApi.undo || (() => {}) },
+      { icon: 'redo', title: '重做 (Ctrl+Y)', cmd: undoApi.redo || (() => {}) },
       { sep: true },
-      { icon: 'B', title: '加粗', cmd: () => document.execCommand('bold') },
-      { icon: 'I', title: '斜体', cmd: () => document.execCommand('italic') },
-      { icon: 'U', title: '下划线', cmd: () => document.execCommand('underline') },
+      { icon: 'bold', title: '加粗 (Ctrl+B)', cmd: () => exec('bold') },
+      { icon: 'italic', title: '斜体 (Ctrl+I)', cmd: () => exec('italic') },
+      { icon: 'underline', title: '下划线 (Ctrl+U)', cmd: () => exec('underline') },
+      { icon: 'strike', title: '删除线', cmd: () => exec('strikeThrough') },
       { sep: true },
-      { icon: 'H1', title: '标题1', cmd: () => document.execCommand('formatBlock', false, 'h1') },
-      { icon: 'H2', title: '标题2', cmd: () => document.execCommand('formatBlock', false, 'h2') },
-      { icon: 'H3', title: '标题3', cmd: () => document.execCommand('formatBlock', false, 'h3') },
-      { icon: '¶', title: '正文', cmd: () => document.execCommand('formatBlock', false, 'p') },
+      { icon: 'highlight', title: '彩色高亮', palette: 'hl' },
+      { icon: 'textColor', title: '文字颜色', palette: 'fg' },
+      { icon: 'sup', title: '上标', cmd: () => exec('superscript') },
+      { icon: 'sub', title: '下标', cmd: () => exec('subscript') },
       { sep: true },
-      { icon: '•', title: '无序列表', cmd: () => document.execCommand('insertUnorderedList') },
-      { icon: '1.', title: '有序列表', cmd: () => document.execCommand('insertOrderedList') },
-      { icon: '☑', title: '待办清单', cmd: () => insertHTML('<ul class="todo-list"><li><input type="checkbox"><span>待办事项</span></li><li><input type="checkbox"><span>待办事项</span></li></ul><p></p>') },
-      { icon: '❝', title: '引用', cmd: () => document.execCommand('formatBlock', false, 'blockquote') },
+      { icon: 'h1', title: '标题1', cmd: () => exec('formatBlock', 'h1') },
+      { icon: 'h2', title: '标题2', cmd: () => exec('formatBlock', 'h2') },
+      { icon: 'h3', title: '标题3', cmd: () => exec('formatBlock', 'h3') },
+      { icon: 'paragraph', title: '正文', cmd: () => exec('formatBlock', 'p') },
       { sep: true },
-      { icon: '⊞', title: '插入表格', cmd: () => insertHTML(this.tableHtml(3, 3) + '<p></p>') },
-      { icon: '&lt;/&gt;', title: '代码块', cmd: () => insertHTML('<pre><code>// 代码</code></pre><p></p>') },
-      { icon: '▾', title: '折叠块', cmd: () => insertHTML('<details><summary>折叠标题</summary><p>内容</p></details><p></p>') },
-      { icon: '—', title: '分割线', cmd: () => insertHTML('<hr><p></p>') },
-      { icon: '∑', title: '行内公式', cmd: async () => {
+      { icon: 'list', title: '无序列表', cmd: () => exec('insertUnorderedList') },
+      { icon: 'listOrdered', title: '有序列表', cmd: () => exec('insertOrderedList') },
+      { icon: 'todo', title: '待办清单', cmd: () => insertHTML('<ul class="todo-list"><li><input type="checkbox"><span>待办事项</span></li><li><input type="checkbox"><span>待办事项</span></li></ul><p></p>') },
+      { icon: 'quote', title: '引用', cmd: () => exec('formatBlock', 'blockquote') },
+      { sep: true },
+      { icon: 'link', title: '插入链接', cmd: async () => {
+        const sel = window.getSelection();
+        const picked = sel && !sel.isCollapsed ? sel.toString() : '';
+        const url = await UI.prompt('输入链接地址', 'https://', 'https://… 或 #锚点');
+        if (!url) return;
+        const label = U.esc(picked || url);
+        insertHTML(`<a href="${U.esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`);
+      } },
+      { icon: 'table', title: '插入表格', cmd: () => insertHTML(this.tableHtml(3, 3) + '<p></p>') },
+      { icon: 'code', title: '代码块', cmd: () => insertHTML('<pre><code>// 代码</code></pre><p></p>') },
+      { icon: 'braces', title: '行内代码', cmd: () => insertHTML('<code>代码</code>&nbsp;') },
+      { icon: 'details', title: '折叠块', cmd: () => insertHTML('<details><summary>折叠标题</summary><p>内容</p></details><p></p>') },
+      { icon: 'minus', title: '分割线', cmd: () => insertHTML('<hr><p></p>') },
+      { sep: true },
+      { icon: 'sigma', title: '行内公式', cmd: async () => {
         const tex = await UI.prompt('输入 LaTeX 公式（行内）', 'x^2+y^2=z^2');
         if (tex) insertHTML(`<span data-tex="${U.esc(tex)}">$${U.esc(tex)}$</span> `);
       } },
-      { icon: 'Σ', title: '块级公式', cmd: async () => {
+      { icon: 'formula', title: '块级公式', cmd: async () => {
         const tex = await UI.prompt('输入 LaTeX 公式（独立成段）', '\\int_a^b f(x)\\,dx');
         if (tex) insertHTML(`$$${U.esc(tex)}$$<p></p>`);
         Ktx.renderMath(editor);
       } },
-      { icon: '⌫', title: '清除格式', cmd: () => document.execCommand('removeFormat') },
-      { icon: '🖼', title: '插入图片', cmd: () => this.pickImage(editor, save) },
-      { icon: '✂', title: '去截图批注制作插图', cmd: () => { location.hash = 'annotator'; UI.toast('先在批注页制作插图，再回到这里「插入批注图」'); } },
+      { sep: true },
+      { icon: 'eraser', title: '清除格式', cmd: () => exec('removeFormat') },
+      { icon: 'image', title: '插入图片', cmd: () => this.pickImage(editor, save) },
+      { icon: 'scissors', title: '去截图批注制作插图', cmd: () => { location.hash = 'annotator'; UI.toast('先在批注页制作插图，再回到这里「插入批注图」'); } },
     ];
-    bar.innerHTML = tools.map((t, i) => t.sep ? '<div class="tb-sep"></div>' : `<button class="tb-btn" data-i="${i}" title="${t.title}">${t.icon}</button>`).join('');
+
+    bar.innerHTML = tools.map((t, i) => t.sep
+      ? '<span class="tb-sep"></span>'
+      : `<button type="button" class="tb-btn${t.palette ? ' tb-palette-btn' : ''}" data-i="${i}" title="${t.title}" aria-label="${t.title}">${icon(t.icon)}</button>`
+    ).join('') + '<div class="tb-popover" hidden></div>';
+
+    const popover = bar.querySelector('.tb-popover');
+    const closePop = () => { popover.hidden = true; };
+    const openPop = (kind, btn) => {
+      if (!popover.hidden && popover.dataset.kind === kind) { closePop(); return; }
+      popover.dataset.kind = kind;
+      const list = kind === 'hl' ? HL_COLORS : FG_COLORS;
+      popover.innerHTML = `<div class="tb-pop-title">${kind === 'hl' ? '高亮颜色' : '文字颜色'}</div>`
+        + `<div class="tb-swatches">${list.map(x =>
+          `<button type="button" class="tb-swatch${x.c === 'transparent' ? ' swatch-clear' : ''}" data-color="${x.c}" title="${x.n}" style="--sw:${x.c === 'transparent' ? '#fff' : x.c}"></button>`).join('')}</div>`;
+      const br = btn.getBoundingClientRect(), pr = bar.getBoundingClientRect();
+      popover.style.left = Math.max(0, Math.min(br.left - pr.left, pr.width - 188)) + 'px';
+      popover.hidden = false;
+      popover.querySelectorAll('.tb-swatch').forEach(sw => {
+        sw.onclick = () => {
+          useCss();
+          exec(kind === 'hl' ? 'hiliteColor' : 'foreColor', sw.dataset.color);
+          closePop();
+        };
+      });
+    };
+
     bar.querySelectorAll('.tb-btn').forEach(btn => {
-      btn.onclick = () => { tools[+btn.dataset.i].cmd(); save(); };
+      btn.onclick = e => {
+        e.stopPropagation();
+        const t = tools[+btn.dataset.i];
+        if (t.palette) { openPop(t.palette, btn); return; }
+        closePop();
+        t.cmd();
+        save();
+      };
     });
+    const onDocDown = e => {
+      if (!popover.hidden && !popover.contains(e.target) && !e.target.closest?.('.tb-palette-btn')) closePop();
+    };
+    document.addEventListener('pointerdown', onDocDown);
+    return () => document.removeEventListener('pointerdown', onDocDown);
   },
 
   tableHtml(rows, cols) {

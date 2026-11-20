@@ -25,6 +25,7 @@ window.MD = (() => {
     s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
     s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
     s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+    s = s.replace(/==([^=]+)==/g, '<mark>$1</mark>');
     return s;
   }
 
@@ -101,14 +102,14 @@ window.MD = (() => {
     /** MD 文本 → HTML 片段（内联数学公式保持原文，交给 KaTeX 渲染） */
     toHtml(mdText = '') {
       const m = mdit();
-      if (m) return m.render(String(mdText));
+      if (m) return m.render(String(mdText)).replace(/==([^=\n<]+)==/g, '<mark>$1</mark>');
       return block(String(mdText).replace(/\r\n?/g, '\n').split('\n'), []);
     },
     /** 检测文本是否像 Markdown（用于粘贴自动转换） */
     looksLikeMd(text = '') {
       const s = text.slice(0, 2000);
       return /^#{1,6}\s/m.test(s) || /^[-*]\s+\S/m.test(s) || /```/.test(s)
-        || /\*\*[^*]+\*\*/.test(s) || /^\d+[.、)]\s/m.test(s) || /^>\s/m.test(s);
+        || /\*\*[^*]+\*\*/.test(s) || /==[^=]+==/.test(s) || /^\d+[.、)]\s/m.test(s) || /^>\s/m.test(s);
     },
   };
 })();

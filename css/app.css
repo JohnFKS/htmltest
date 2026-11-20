@@ -329,20 +329,41 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 }
 .note-title-input:hover, .note-title-input:focus { border-color: var(--line-2); background: var(--surface); outline: none; }
 
+/* 统一线性图标（继承 currentColor，随按钮字号缩放） */
+.ico { display: inline-block; vertical-align: -3px; flex: 0 0 auto; }
+.btn .ico, .tool-btn .ico { vertical-align: -3px; margin-right: 1px; }
 /* 富文本编辑器 */
 .editor-toolbar {
+  position: relative;
   display: flex; flex-wrap: wrap; gap: 3px; padding: 6px;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   border-bottom: none;
 }
 .tb-btn {
-  min-width: 30px; height: 30px; padding: 0 8px; border: none; background: none;
+  min-width: 30px; height: 30px; padding: 0 7px; border: none; background: none;
   border-radius: 6px; cursor: pointer; font-size: 14px; color: var(--ink-2); font-family: var(--font);
+  display: inline-flex; align-items: center; justify-content: center; transition: background .12s, color .12s;
 }
-.tb-btn:hover { background: var(--surface-2); color: var(--ink); }
+.tb-btn:hover { background: var(--surface-2); color: var(--primary); }
 .tb-btn.on { background: var(--primary-soft); color: var(--primary); }
+.tb-palette-btn { color: var(--accent); }
 .tb-sep { width: 1px; background: var(--line); margin: 4px 4px; }
+/* 高亮 / 文字颜色悬浮色板 */
+.tb-popover {
+  position: absolute; top: calc(100% - 2px); left: 0; z-index: 40;
+  width: 184px; padding: 10px 11px 12px; border: 1px solid var(--line-2);
+  border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-lg);
+}
+.tb-popover[hidden] { display: none; }
+.tb-pop-title { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; }
+.tb-swatches { display: flex; flex-wrap: wrap; gap: 7px; }
+.tb-swatch {
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--line-2); background: var(--sw); transition: transform .12s, box-shadow .12s;
+}
+.tb-swatch:hover { transform: translateY(-2px); box-shadow: 0 2px 8px rgba(38,35,29,.2); border-color: var(--ink-3); }
+.tb-swatch.swatch-clear { background: linear-gradient(135deg, var(--surface) 45%, var(--danger) 45%, var(--danger) 55%, var(--surface) 55%); }
 .version-summary {
   font-size: 12px; color: var(--ink-3); padding: 6px 10px; margin-bottom: 10px;
   border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line);
@@ -387,6 +408,12 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 .rich summary { cursor: pointer; font-weight: 600; }
 .rich [contenteditable]:focus { outline: none; }
 .rich-mark { background: #ffe9a8; padding: 0 2px; border-radius: 3px; }
+/* 富文本批注：高亮 / 颜色 / 链接 / 上下标（execCommand 产出的内联 style 与语义标签） */
+.rich mark { background: #fff2a8; color: inherit; padding: 1px 2px; border-radius: 3px; }
+.rich s, .rich del { color: var(--ink-3); }
+.rich sup, .rich sub { font-size: .76em; line-height: 0; }
+.rich a { color: var(--primary); text-underline-offset: 2px; }
+.rich p { min-height: 1em; }
 
 /* ============================================================
    截图批注
