@@ -314,36 +314,85 @@ window.AI = (() => {
     return { html: cleanHtml(await callChat({ key: 'ctxAsk', filled: prompt })), demo: false };
   }
 
-  // Function calling：笔记编辑工具定义（模型只能请求这些受控操作，实际执行由前端 NoteAgent 完成）
-  const NOTE_EDIT_TOOLS = [{
-    type: 'function',
-    function: {
-      name: 'edit_note',
-      description: '编辑当前笔记。需要修改笔记正文/标题时调用此工具；用户只是提问时不要调用。每次调用只做一个操作。',
-      parameters: {
-        type: 'object',
-        properties: {
-          action: {
-            type: 'string', enum: ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title'],
-            description: 'replace_selection=改写用户选中的文本；replace_block=改写第 blockIndex 个块；insert_after_block=在第 blockIndex 块后插入；append=追加到末尾；replace_all=重写整篇（慎用）；rename_title=改标题',
-          },
-          html: { type: 'string', description: '要写入的受控 HTML 片段（replace_all 时为整篇 HTML）。禁止 script/style/img/a/id/事件属性，可用 p/h4-h6/ul/ol/li/table/b/strong/i/em/mark/code/pre/blockquote/span 及 $公式$。' },
-          title: { type: 'string', description: 'rename_title 时的新标题' },
-          blockIndex: { type: 'integer', minimum: 0, description: '块序号，从 0 开始，对应【笔记块列表】里的编号' },
-          reason: { type: 'string', description: '用一句话说明这次编辑做了什么，展示给用户确认' },
+  // Function calling：受控工具定义。读取类由 NoteRefs 执行（普通对话也可用）；编辑类由 NoteAgent 执行（需编辑模式，逐项确认）。
+  const NOTE_READ_TOOLS = [
+    {
+      type: 'function',
+      function: {
+        name: 'search_content',
+        description: '在全部笔记/题库/三本/模板/卡片/作答/批注/历史对话中按关键词搜索，返回可引用的条目 ID。需要跨内容找资料时调用。',
+        parameters: {
+          type: 'object',
+          properties: { query: { type: 'string', description: '搜索关键词' }, limit: { type: 'integer', minimum: 1, maximum: 20, description: '返回条数，默认 8' } },
+          required: ['query'],
         },
-        required: ['action', 'reason'],
       },
     },
-  }];
+    {
+      type: 'function',
+      function: {
+        name: 'read_content',
+        description: '按类型与 ID 读取任意一条内容的完整文本（笔记全文、整本题库、三本条目、模板、批注问答、历史对话等），用于跨对话/跨文档引用与对比。',
+        parameters: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['note', 'annot', 'bank', 'entry', 'template', 'card', 'record', 'session'], description: '内容类型' },
+            id: { type: 'string', description: '内容 ID，来自【全局内容摘要】或 search_content 结果' },
+          },
+          required: ['kind', 'id'],
+        },
+      },
+    },
+  ];
+  const NOTE_EDIT_TOOLS = [
+    {
+      type: 'function',
+      function: {
+        name: 'edit_note',
+        description: '编辑当前笔记。需要修改笔记正文/标题时调用此工具；用户只是提问时不要调用。每次调用只做一个操作。',
+        parameters: {
+          type: 'object',
+          properties: {
+            action: {
+              type: 'string', enum: ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title'],
+              description: 'replace_selection=改写用户选中的文本；replace_block=改写第 blockIndex 个块；insert_after_block=在第 blockIndex 块后插入；append=追加到末尾；replace_all=重写整篇（慎用）；rename_title=改标题',
+            },
+            html: { type: 'string', description: '要写入的受控 HTML 片段（replace_all 时为整篇 HTML）。禁止 script/style/img/a/id/事件属性，可用 p/h4-h6/ul/ol/li/table/b/strong/i/em/mark/code/pre/blockquote/span 及 $公式$。' },
+            title: { type: 'string', description: 'rename_title 时的新标题' },
+            blockIndex: { type: 'integer', minimum: 0, description: '块序号，从 0 开始，对应【笔记块列表】里的编号' },
+            reason: { type: 'string', description: '用一句话说明这次编辑做了什么，展示给用户确认' },
+          },
+          required: ['action', 'reason'],
+        },
+      },
+    },
+    ...NOTE_READ_TOOLS,
+  ];
 
-  async function toolResult(call, onToolCall) {
+  async function toolResult(call, onToolCall, onRead) {
     const fn = call?.function || {};
     const name = String(fn.name || '');
-    if (name !== 'edit_note') return { ok: false, error: `未知工具：${name}` };
     let args = {};
     try { args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments || '{}') : (fn.arguments || {}); }
     catch (e) { return { ok: false, error: '工具参数不是合法 JSON' }; }
+    if (name === 'search_content') {
+      const q = String(args.query || '').trim();
+      if (!q) return { ok: false, error: '搜索关键词不能为空' };
+      try {
+        const hits = (onRead?.search || (() => []))(q, U.clamp(Number(args.limit) || 8, 1, 20));
+        return { ok: true, hits, message: hits.length ? `找到 ${hits.length} 条相关内容` : '没有找到匹配内容' };
+      } catch (e) { return { ok: false, error: e.message || '搜索失败' }; }
+    }
+    if (name === 'read_content') {
+      const kind = String(args.kind || ''), id = String(args.id || '');
+      if (!kind || !id) return { ok: false, error: '缺少 kind 或 id' };
+      try {
+        const r = (onRead?.resolve || (() => ({ ok: false, error: '读取能力未就绪' })))({ kind, id });
+        return r;
+      } catch (e) { return { ok: false, error: e.message || '读取失败' }; }
+    }
+    if (name !== 'edit_note') return { ok: false, error: `未知工具：${name}` };
+    if (typeof onToolCall !== 'function') return { ok: false, error: '编辑模式未开启，无法修改笔记（可在对话栏右上角开启 ✎ 编辑模式）' };
     const action = String(args.action || '');
     if (!['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title'].includes(action)) {
       return { ok: false, error: `不支持的操作：${action}` };
@@ -366,20 +415,24 @@ window.AI = (() => {
     }
   }
 
-  // 笔记右侧对话栏：长期记忆摘要 + 焦点笔记 + 近期轮次 + 相关历史召回
-  // onToolCall 存在时启用 function calling：模型可请求受控的笔记编辑，循环执行工具直到给出最终文本。
-  async function ctxChat({ noteTitle, noteText, selection, question, history = [], summary = '', onToolCall = null, noteBlocks = '' }) {
+  // 笔记右侧对话栏：长期记忆摘要 + 焦点笔记 + 近期轮次 + 相关历史召回 + @引用 + 全局内容摘要
+  // onToolCall 或 onRead 存在时启用 function calling：编辑模式可改笔记；普通模式只带只读检索工具，可查全部内容。
+  async function ctxChat({ noteTitle, noteText, selection, question, history = [], summary = '', onToolCall = null, noteBlocks = '', refsText = '', globalDigest = '', onRead = null }) {
     const q = U.asText(question || '').trim();
     if (!q) throw new Error('问题不能为空');
     const { recent, recallText, stats } = assembleHistory(history, q);
-    if (!live()) return Mock.ctxChat({ noteTitle, selection, question: q, history, summary, context: stats });
-    const useTools = typeof onToolCall === 'function';
-    let system = fill(Store.prompt(useTools ? 'ctxChatAgent' : 'ctxChat'), {
+    if (!live()) return Mock.ctxChat({ noteTitle, selection, question: q, history, summary, context: stats, refsText, globalDigest });
+    // 编辑模式：edit_note + 读取工具；普通模式：仅只读检索工具（提示词仍用普通模板，不提编辑块列表）
+    const canEdit = typeof onToolCall === 'function';
+    const useTools = canEdit || onRead != null;
+    let system = fill(Store.prompt(canEdit ? 'ctxChatAgent' : 'ctxChat'), {
       noteTitle: U.asText(noteTitle || '当前笔记').slice(0, 80),
       noteText: noteExcerpt(noteText, selection),
       noteBlocks: U.asText(noteBlocks || '（无块信息）').slice(0, 12000),
       selection: U.asText(selection || '').slice(0, 1500) || '（本轮没有选中文本）',
       summary: U.asText(summary || '').slice(0, 2500) || '（暂无长期记忆摘要）',
+      refsText: U.asText(refsText || '').slice(0, 20000) || '（本轮没有 @ 引用）',
+      globalDigest: U.asText(globalDigest || '').slice(0, 16000) || '（暂无全局内容）',
       question: q,
     });
     if (recallText) system += `\n\n【相关历史召回】\n${recallText}`;
@@ -399,17 +452,17 @@ window.AI = (() => {
     for (let round = 0; round < 4; round++) {
       const res = await rawChat({
         messages,
-        tools: NOTE_EDIT_TOOLS,
+        tools: canEdit ? NOTE_EDIT_TOOLS : NOTE_READ_TOOLS,
         tool_choice: 'auto',
       }, true);
       if (!res.toolCalls.length) { finalText = res.content; break; }
       messages.push({ role: 'assistant', content: res.content || null, tool_calls: res.toolCalls });
       for (const call of res.toolCalls) {
-        const result = await toolResult(call, onToolCall);
+        const result = await toolResult(call, onToolCall, onRead);
         edits.push({ name: call?.function?.name || 'edit_note', args: call?.function?.arguments || '', result });
         messages.push({ role: 'tool', tool_call_id: call.id || U.uid('call'), content: JSON.stringify(result) });
       }
-      if (round === 3) finalText = '已完成本轮允许的笔记编辑。';
+      if (round === 3) finalText = '已完成本轮允许的操作。';
     }
     const okCount = edits.filter(e => e.result?.ok).length;
     const prefix = okCount

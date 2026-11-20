@@ -779,6 +779,46 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
 .chat-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .chat-status { flex: 1; min-width: 0; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chat-error { color: var(--danger); }
+/* ---------- @ 引用：输入框 chips / 消息引用 chip / @ 弹层 / 跳转高亮 ---------- */
+.chat-refs { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 6px; }
+.chat-ref-chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  padding: 2px 8px; border: 1px solid #cfe0d6; border-radius: 999px;
+  background: var(--primary-soft); color: var(--primary); font-size: 11.5px;
+  font-family: var(--font); text-align: left;
+}
+.chat-msg .chat-ref-chip { cursor: pointer; transition: border-color .12s; }
+.chat-msg .chat-ref-chip:hover { border-color: var(--primary); }
+.chat-ref-chip svg { flex: 0 0 auto; }
+.chat-ref-chip [data-unref] {
+  border: none; background: none; padding: 0 0 0 2px; color: inherit;
+  font-size: 12px; line-height: 1; cursor: pointer; font-family: var(--font);
+}
+.chat-ref-chip [data-unref]:hover { color: var(--danger); }
+.chat-ref-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }
+.chat-at-menu {
+  position: fixed; z-index: 135; width: 340px; max-height: 320px; overflow-y: auto;
+  padding: 6px; border: 1px solid var(--line-2); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow-lg);
+}
+.chat-at-menu[hidden] { display: none; }
+.chat-at-head { font-size: 11px; color: var(--ink-3); padding: 4px 8px 8px; }
+.chat-at-item {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%;
+  padding: 7px 8px; border: none; border-radius: 6px; background: none;
+  cursor: pointer; text-align: left; font-family: var(--font);
+}
+.chat-at-item:hover, .chat-at-item.active { background: var(--primary-soft); }
+.chat-at-icon { flex: 0 0 auto; padding-top: 2px; color: var(--primary); }
+.chat-at-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.chat-at-text b { font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-at-text small { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-at-empty { padding: 14px; text-align: center; font-size: 12px; color: var(--ink-3); }
+.ref-highlight { animation: refGlow 2s ease; }
+@keyframes refGlow {
+  0%, 60% { outline: 2px solid var(--primary); outline-offset: 2px; box-shadow: 0 0 0 6px var(--primary-soft); }
+  100% { outline: none; box-shadow: none; }
+}
 @media (min-width: 761px) {
   body.chat-open .view { padding-right: calc(var(--chat-width, 460px) + 22px); }
   body.chat-open .rich .ai-annotation-card {

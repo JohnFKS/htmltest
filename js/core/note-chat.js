@@ -14,6 +14,8 @@ window.NoteChat = (() => {
   let compacting = false;
   let chatWidth = 460;
   let agentMode = false;   // 编辑模式：允许 AI 通过 tool_calls 直接改笔记（需逐项确认）
+  let atState = null;      // @ 提及弹层状态：{ start, query, items, index }
+  const pendingRefs = [];  // 当前输入待发送的 @ 引用 [{kind,id,title,desc}]
 
   function setChatWidth(w, persist = true) {
     const max = Math.max(360, Math.min(760, window.innerWidth - 260));
@@ -69,6 +71,72 @@ window.NoteChat = (() => {
     return s;
   }
 
+  // ---------- @ 提及 ----------
+  function closeAt() {
+    atState = null;
+    document.querySelectorAll('#chat-at-menu').forEach(el => el.remove());
+  }
+  function renderPendingRefs() {
+    if (!pendingRefs.length) { els.refs.hidden = true; els.refs.innerHTML = ''; return; }
+    els.refs.hidden = false;
+    els.refs.innerHTML = pendingRefs.map((r, i) =>
+      `<span class="chat-ref-chip">${Icon.svg(NoteRefs.KINDS[r.kind]?.icon || 'file', 12)} ${U.esc(r.title)}<button data-unref="${i}" title="移除引用">×</button></span>`).join('');
+    els.refs.querySelectorAll('[data-unref]').forEach(btn => btn.onclick = () => {
+      pendingRefs.splice(+btn.dataset.unref, 1);
+      renderPendingRefs();
+    });
+  }
+  function openAt(query = '', start = -1) {
+    const q = query.trim().toLowerCase();
+    const items = NoteRefs.all()
+      .filter(r => !(r.kind === 'session' && r.id === activeId))  // 当前对话自身不进 @ 列表
+      .filter(r => !q || (r.title + ' ' + r.desc).toLowerCase().includes(q))
+      .slice(0, 10);
+    atState = { items, index: 0, query, start };
+    let menu = document.getElementById('chat-at-menu');
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.id = 'chat-at-menu';
+      menu.className = 'chat-at-menu';
+      document.body.appendChild(menu);
+    }
+    if (!items.length) {
+      menu.innerHTML = '<div class="chat-at-empty">没有匹配的内容</div>';
+    } else {
+      menu.innerHTML = `<div class="chat-at-head">@ 引用内容（↑↓ 选择 · Enter 确认 · Esc 关闭）</div>` + items.map((r, i) =>
+        `<button class="chat-at-item ${i === 0 ? 'active' : ''}" data-i="${i}">
+          <span class="chat-at-icon">${Icon.svg(NoteRefs.KINDS[r.kind]?.icon || 'file', 14)}</span>
+          <span class="chat-at-text"><b>${U.esc(r.title)}</b><small>${U.esc(NoteRefs.KINDS[r.kind]?.label || r.kind)} · ${U.esc(r.desc.slice(0, 50))}</small></span>
+        </button>`).join('');
+    }
+    // 空结果也要定位显示，避免沿用上次打开时的旧几何位置
+    const ir = els.input.getBoundingClientRect();
+    menu.hidden = false;
+    menu.style.left = Math.max(8, Math.min(ir.left, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+    menu.style.top = Math.max(8, ir.top - menu.offsetHeight - 6) + 'px';
+    menu.querySelectorAll('.chat-at-item').forEach(btn => btn.onclick = () => pickAt(+btn.dataset.i));
+  }
+  function pickAt(i) {
+    if (!atState) return;
+    const ref = atState.items[i];
+    if (!ref) return;
+    if (!pendingRefs.some(r => r.kind === ref.kind && r.id === ref.id)) pendingRefs.push({ kind: ref.kind, id: ref.id, title: ref.title, desc: ref.desc });
+    // 按记录的 @ 起始位置精确移除查询片段（多个 @ 混排时不会删错）
+    const el = els.input, pos = el.selectionStart, val = el.value;
+    const start = atState.start >= 0 && val[atState.start] === '@' ? atState.start : val.lastIndexOf('@', Math.max(0, pos - 1));
+    if (start >= 0) el.value = val.slice(0, start) + val.slice(pos);
+    renderPendingRefs();
+    closeAt();
+    el.focus();
+  }
+  function handleAtInput() {
+    const el = els.input, pos = el.selectionStart;
+    const before = el.value.slice(0, pos);
+    const m = before.match(/(?:^|\s)@([^\s@]*)$/);
+    if (!m) { if (atState) closeAt(); return; }
+    openAt(m[1] || '', m.index + m[0].indexOf('@'));
+  }
+
   function ensure() {
     if (drawer) return;
     drawer = document.createElement('aside');
@@ -101,7 +169,8 @@ window.NoteChat = (() => {
           <div class="chat-composer-wrap">
             <div class="chat-quick" id="chat-quick">${QUICK.map(q => `<button class="chat-quick-btn" data-q="${U.esc(q)}">${U.esc(q)}</button>`).join('')}</div>
             <div class="chat-composer">
-              <textarea class="chat-input" id="chat-input" rows="2" placeholder="继续针对这篇笔记提问…（Enter 发送，Shift+Enter 换行）"></textarea>
+              <div class="chat-refs" id="chat-refs" hidden></div>
+              <textarea class="chat-input" id="chat-input" rows="2" placeholder="继续针对这篇笔记提问… 输入 @ 引用笔记/题库等内容（Enter 发送，Shift+Enter 换行）"></textarea>
               <div class="chat-composer-foot">
                 <span class="chat-status" id="chat-status"></span>
                 <button class="btn btn-primary btn-sm" id="chat-send">发送</button>
@@ -122,6 +191,7 @@ window.NoteChat = (() => {
       context: drawer.querySelector('#chat-context'),
       messages: drawer.querySelector('#chat-messages'),
       quick: drawer.querySelector('#chat-quick'),
+      refs: drawer.querySelector('#chat-refs'),
       input: drawer.querySelector('#chat-input'),
       status: drawer.querySelector('#chat-status'),
       send: drawer.querySelector('#chat-send'),
@@ -214,6 +284,7 @@ window.NoteChat = (() => {
     els.messages.addEventListener('click', e => {
       const op = e.target.closest('[data-act]');
       if (!op) return;
+      if (op.dataset.act === 'ref') { NoteRefs.jump(op.dataset.kind, op.dataset.id); return; }
       const s = active();
       const msg = s?.messages.find(m => m.id === op.dataset.id);
       if (!msg) return;
@@ -238,11 +309,35 @@ window.NoteChat = (() => {
     });
 
     els.send.addEventListener('click', send);
+    els.refs.addEventListener('click', e => e.stopPropagation());
+    els.input.addEventListener('input', handleAtInput);
     els.input.addEventListener('keydown', e => {
+      if (atState && !e.isComposing) {  // 中文输入法选词期间不拦截按键
+        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && atState.items.length) {
+          e.preventDefault();
+          const n = atState.items.length;
+          atState.index = (atState.index + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
+          document.querySelectorAll('.chat-at-item').forEach((b, i) => b.classList.toggle('active', i === atState.index));
+          return;
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          if (atState.items.length) { pickAt(atState.index); return; }
+          closeAt();  // 无匹配项：关掉菜单，Enter 落到下方正常发送
+        }
+        else if (e.key === 'Escape') { e.preventDefault(); closeAt(); return; }
+        else return;
+      }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
     });
+    document.addEventListener('pointerdown', e => {
+      if (atState && !e.target.closest?.('#chat-at-menu, #chat-input')) closeAt();
+    });
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && isOpen() && !document.getElementById('modal-root').children.length) close();
+      if (e.key === 'Escape' && isOpen() && !document.getElementById('modal-root').children.length) {
+        if (atState) { closeAt(); return; }
+        close();
+      }
     });
   }
 
@@ -311,11 +406,14 @@ window.NoteChat = (() => {
       </div>`;
       return;
     }
+    const refChips = refs => (refs?.length ? `<div class="chat-ref-chips">${refs.map(r =>
+      `<button class="chat-ref-chip" data-act="ref" data-kind="${U.esc(r.kind)}" data-id="${U.esc(r.id)}" title="跳转到 ${U.esc(r.title)}">${Icon.svg(NoteRefs.KINDS[r.kind]?.icon || 'file', 12)} ${U.esc(r.title)}</button>`).join('')}</div>` : '');
     els.messages.innerHTML = s.messages.map(m => {
       if (m.role === 'user') {
         return `<div class="chat-msg chat-msg-user">
           <div class="chat-bubble">
             ${m.selection ? `<div class="chat-user-quote">引用：${U.esc(String(m.selection).slice(0, 120))}${String(m.selection).length > 120 ? '…' : ''}</div>` : ''}
+            ${refChips(m.refs)}
             <div class="chat-user-text">${U.esc(U.asText(m.text || '')).replace(/\n/g, '<br>')}</div>
           </div>
           <div class="chat-avatar">我</div>
@@ -325,6 +423,7 @@ window.NoteChat = (() => {
       return `<div class="chat-msg chat-msg-ai">
         <div class="chat-avatar ai">✒</div>
         <div class="chat-msg-col">
+          ${refChips(m.refs)}
           ${m.edits?.length ? `<div class="chat-edit-log">${m.edits.map(x =>
             `<div class="chat-edit-item ${x.result?.ok ? 'ok' : 'fail'}">${x.result?.ok ? '✓' : '✕'} ${U.esc((x.args && (() => { try { return JSON.parse(x.args).reason || JSON.parse(x.args).action; } catch (_) { return '编辑'; } })()) || '编辑')}${x.result?.error ? ' · ' + U.esc(x.result.error) : ''}</div>`).join('')}</div>` : ''}
           <div class="chat-bubble ai-report">${Sanitize.html(answer)}</div>
@@ -395,6 +494,29 @@ window.NoteChat = (() => {
     if (candidates.length >= AUTO_COMPACT_AT) await compactNow(s, { silent: true });
   }
 
+  // 从 AI 回答中解析引用来源（《标题》 或 @kind:id），挂为可点击 chip，实现跨笔记/跨对话跳转
+  function extractRefs(html) {
+    const text = U.stripHtml(U.asText(html || ''));
+    const out = [];
+    const seen = new Set();
+    const push = r => {
+      const key = `${r.kind}:${r.id}`;
+      if (!r || seen.has(key)) return;
+      seen.add(key);
+      out.push({ kind: r.kind, id: r.id, title: r.title, desc: r.desc });
+    };
+    const allRefs = NoteRefs.all();
+    for (const m of text.matchAll(/《([^《》]{1,80})》/g)) {
+      const hit = allRefs.find(r => r.title === m[1]);
+      if (hit) push(hit);
+    }
+    for (const m of text.matchAll(/@(note|annot|bank|entry|template|card|record|session):([A-Za-z0-9_-]+)/g)) {
+      const item = NoteRefs.find(m[1], m[2]);
+      if (item) push({ kind: m[1], id: m[2], ...NoteRefs.metaOf(m[1], item) });
+    }
+    return out;
+  }
+
   async function generate(s, question, selection, opts = {}) {
     const history = opts.history || s.messages.slice(0, -1);
     const insertAt = opts.insertAt;
@@ -407,6 +529,11 @@ window.NoteChat = (() => {
     try {
       const note = noteOf(s);
       const useAgent = agentMode && Store.aiLive() && !!note && App.currentView === 'notes';
+      // @ 引用与全局检索：refsText 携带引用全文，digest 让模型知道全局有什么，onRead 供 search/read 工具
+      const refs = opts.refs || [];
+      const refsText = refs.map(r => NoteRefs.resolve(r).text).join('\n\n');
+      const globalDigest = NoteRefs.digest();
+      const onRead = { search: NoteRefs.search, resolve: NoteRefs.resolve };
       const res = useAgent
         ? await AI.ctxChat({
           noteTitle: s.noteTitle || note?.title || '当前笔记',
@@ -416,6 +543,7 @@ window.NoteChat = (() => {
           question,
           history,
           summary: memoryOf(s).summary,
+          refsText, globalDigest, onRead,
           onToolCall: RichAsk.executeNoteEdit,
         })
         : await AI.ctxChat({
@@ -425,11 +553,14 @@ window.NoteChat = (() => {
           question,
           history,
           summary: memoryOf(s).summary,
+          refsText, globalDigest, onRead,
         });
       const html = U.asText(res?.html ?? '');
+      const cited = extractRefs(html);
       insert({
         id: U.uid('msg'), role: 'assistant', html, text: U.stripHtml(html),
-        demo: !!res?.demo, context: res?.context || null, edits: res?.edits || null, createdAt: U.now(),
+        demo: !!res?.demo, context: res?.context || null, edits: res?.edits || null,
+        refs: cited.length ? cited : undefined, createdAt: U.now(),
       });
       Store.update(COLL, s.id, { messages: s.messages });
       await maybeCompact(s);
@@ -458,13 +589,16 @@ window.NoteChat = (() => {
       activeId = s.id;
     }
     const selection = s.context?.selection || '';
-    s.messages.push({ id: U.uid('msg'), role: 'user', text: q, selection, createdAt: U.now() });
+    // 消费待发送的 @ 引用：存入用户消息（气泡渲染可点击 chip），并清空输入区 chips
+    const refs = pendingRefs.splice(0).map(r => ({ ...r }));
+    renderPendingRefs();
+    s.messages.push({ id: U.uid('msg'), role: 'user', text: q, selection, refs: refs.length ? refs : undefined, createdAt: U.now() });
     if (s.messages.filter(m => m.role === 'user').length === 1 && (!s.title || s.title === '新对话')) {
       s.title = makeTitle(q);
     }
     Store.update(COLL, s.id, { messages: s.messages, title: s.title, context: s.context });
     els.input.value = '';
-    await generate(s, q, selection, { history: s.messages.slice(0, -1) });
+    await generate(s, q, selection, { history: s.messages.slice(0, -1), refs });
   }
 
   async function retry(msgId) {
@@ -479,7 +613,7 @@ window.NoteChat = (() => {
     const history = s.messages.slice(0, userAt);
     s.messages.splice(i, 1);
     Store.update(COLL, s.id, { messages: s.messages });
-    await generate(s, U.asText(user.text), user.selection || s.context?.selection || '', { history, insertAt: i });
+    await generate(s, U.asText(user.text), user.selection || s.context?.selection || '', { history, insertAt: i, refs: user.refs || [] });
   }
 
   function newSession() {
@@ -539,6 +673,7 @@ window.NoteChat = (() => {
 
   function close() {
     if (!drawer) return;
+    closeAt();
     drawer.classList.remove('open', 'show-history');
     document.body.classList.remove('chat-open');
   }

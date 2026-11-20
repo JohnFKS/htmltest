@@ -164,9 +164,11 @@ window.Mock = (() => {
   }
 
   // 演示：笔记右侧多轮对话（承接轮次，明确标注演示）
-  function ctxChat({ selection, question, history = [], noteTitle, summary = '', context = {} } = {}) {
+  function ctxChat({ selection, question, history = [], noteTitle, summary = '', context = {}, refsText = '', globalDigest = '' } = {}) {
     const turns = history.filter(m => m.role === 'user').length;
     const sel = String(selection || '').trim().slice(0, 80);
+    const refCount = (String(refsText || '').match(/【引用：/g) || []).length;
+    const digestOn = !!String(globalDigest || '') && !String(globalDigest).includes('当前知识库为空');
     return { html: `${badge}
 <h4>演示回答 · 第 ${turns + 1} 轮</h4>
 <p>围绕「${U.esc(noteTitle || '当前笔记')}」，你问的是「${U.esc(String(question || '').slice(0, 60))}」${sel ? `，本轮选中文本是「${U.esc(sel)}」` : ''}。</p>
@@ -174,6 +176,7 @@ window.Mock = (() => {
 <li>演示模式不调用真实大模型：这里展示的是分层上下文的排版与占位。</li>
 <li>${turns ? `已识别到前文 ${turns} 轮；本轮送入近期对话 ${context.recent || 0} 条、相关历史召回 ${context.recalled || 0} 条。` : '这是本会话的第一轮；配置真实 AI 后将基于整篇笔记与选中文本作答。'}</li>
 <li>${summary ? '已加载长期记忆摘要；旧对话不会再逐字重复送入模型。' : '暂无长期记忆摘要；对话变长后会自动压缩旧轮次。'}</li>
+<li>${refCount ? `已附上本轮 @ 引用全文（${refCount} 条）` : '本轮没有 @ 引用'}${digestOn ? '；已加载全局内容摘要（笔记/题库/三本/对话等），配置真实 AI 后可检索读取' : ''}。</li>
 <li>配置真实 AI 后，答案会用表格、公式与折叠块呈现，并支持一键追加回当前笔记。</li>
 </ul>`, demo: true, context };
   }

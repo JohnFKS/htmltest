@@ -23,6 +23,7 @@ globalThis.U = {
   esc: s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
   stripHtml: s => String(s ?? '').replace(/<[^>]*>/g, ''),
   clamp: (v, min, max) => Math.min(max, Math.max(min, v)),
+  asText: v => (v == null ? '' : typeof v === 'string' ? v : Array.isArray(v) ? v.map(x => globalThis.U.asText(x)).join('') : String(v)),
 };
 
 load('js/core/md.js');
@@ -95,4 +96,96 @@ test('工具执行器：替换块操作使用 Sanitize.html 消毒（源码契�
   assert.match(src, /Views\.notes\._createVersion\?\.\('ai-agent'\)/, '编辑前应存版本快照');
   assert.match(src, /const safe = Sanitize\.html\(html/);
   assert.match(src, /UI\.confirm/);
+});
+
+// ---------- NoteRefs：全局内容引用层（@ 提及 / 全局摘要 / 工具读取的数据源） ----------
+function loadNoteRefs() {
+  // 最小 stub：note-refs 只依赖 Store/U/Sanitize（document/UI/Views/App 仅在 DOM 相关分支用到，本组测试不触发）
+  const db = {
+    notes: [{ id: 'note_a', title: '极限与连续', content: '<p>连续的定义</p>', createdAt: 1, updatedAt: 1 }],
+    annots: [],
+    banks: [{ id: 'bank_a', name: '高数第三章', questions: [{ id: 'q_1', stem: '求极限 lim x→0 sinx/x', options: [], answer: '1', analysis: '重要极限' }] }],
+    entries: [],
+    templates: [{ id: 'tpl_a', name: '极限题模板', essence: '先化简再夹逼', steps: ['化简', '夹逼'], signals: [], disguises: [], pitfalls: [], members: [] }],
+    cards: [{ id: 'card_a', front: '连续的定义是什么', back: '极限存在且等于函数值' }],
+    records: [],
+    chatSessions: [{ id: 'chat_a', title: '关于极限的讨论', messages: [{ role: 'user', text: '什么是重要极限？' }, { role: 'assistant', html: '<p>sinx/x 趋于 1</p>' }] }],
+  };
+  globalThis.Store = {
+    coll: name => db[name] || [],
+    find: (name, id) => (db[name] || []).find(x => x.id === id) || null,
+  };
+  globalThis.Sanitize = { html: s => String(s ?? '') };
+  load('js/core/note-refs.js');
+}
+
+test('NoteRefs：all 汇总全部可引用内容并带类型元信息', () => {
+  loadNoteRefs();
+  const all = globalThis.NoteRefs.all();
+  assert.ok(all.some(r => r.kind === 'note' && r.id === 'note_a' && r.title === '极限与连续'));
+  assert.ok(all.some(r => r.kind === 'bank' && r.id === 'bank_a'));
+  assert.ok(all.some(r => r.kind === 'session' && r.id === 'chat_a'));
+  assert.ok(all.some(r => r.kind === 'card' && r.id === 'card_a'));
+  assert.ok(all.some(r => r.kind === 'template' && r.id === 'tpl_a'));
+});
+
+test('NoteRefs：search 按关键词命中标题与摘要', () => {
+  const hits = globalThis.NoteRefs.search('极限');
+  assert.ok(hits.length >= 2, '应同时命中笔记/模板/对话等标题含关键词的条目');
+  assert.ok(hits.every(h => h.kind && h.id && h.title));
+  assert.deepEqual(globalThis.NoteRefs.search('  '), [], '空白关键词返回空');
+});
+
+test('NoteRefs：digest 生成全局清单，agent 借此感知项目全部内容', () => {
+  const d = globalThis.NoteRefs.digest();
+  assert.match(d, /【笔记 · 1 条】/);
+  assert.match(d, /@bank:bank_a/);
+  assert.match(d, /@session:chat_a/);
+});
+
+test('NoteRefs：resolve 输出类型标注全文；失效引用与超预算截断有明确标记', () => {
+  const bank = globalThis.NoteRefs.resolve({ kind: 'bank', id: 'bank_a' });
+  assert.equal(bank.ok, true);
+  assert.match(bank.text, /【引用：题库｜高数第三章】/);
+  assert.match(bank.text, /求极限/);
+  assert.match(bank.text, /答：1/);
+
+  const session = globalThis.NoteRefs.resolve({ kind: 'session', id: 'chat_a' });
+  assert.match(session.text, /\[学生\] 什么是重要极限/);
+  assert.match(session.text, /\[助教\]/);
+
+  const gone = globalThis.NoteRefs.resolve({ kind: 'note', id: 'nope' });
+  assert.equal(gone.ok, false);
+  assert.match(gone.text, /引用失效/);
+
+  const truncated = globalThis.NoteRefs.resolve({ kind: 'card', id: 'card_a' }, 5);
+  assert.match(truncated.text, /内容过长已截断/);
+});
+
+// ---------- @ 引用接线与只读工具门控（源码契约） ----------
+test('note-chat：发送时附加并清空 refs，generate 传入引用全文/全局摘要/读取工具', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
+  assert.match(src, /pendingRefs\.splice\(0\)/, '发送时应消费 pendingRefs');
+  assert.match(src, /refs: refs\.length \? refs : undefined/, '用户消息应携带 refs（气泡渲染 chip）');
+  assert.match(src, /NoteRefs\.digest\(\)/, 'generate 应传全局内容摘要');
+  assert.match(src, /const onRead = \{ search: NoteRefs\.search, resolve: NoteRefs\.resolve \}/);
+  assert.match(src, /function extractRefs/, 'AI 回答应解析引用来源为可点击 chip');
+  assert.match(src, /refs: cited\.length \? cited : undefined/, 'assistant 消息应携带解析出的引用');
+  assert.match(src, /refs: user\.refs \|\| \[\]/, '重新生成应透传原引用');
+});
+
+test('provider：普通模式具备只读检索工具，edit_note 仅编辑模式可用', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
+  assert.match(src, /NOTE_READ_TOOLS/, '应拆分只读工具集');
+  assert.match(src, /canEdit \? NOTE_EDIT_TOOLS : NOTE_READ_TOOLS/, '按模式选用工具数组');
+  assert.match(src, /canEdit \? 'ctxChatAgent' : 'ctxChat'/, '提示词按编辑模式选择');
+  assert.match(src, /编辑模式未开启/, '无执行器时 edit_note 应给出明确错误');
+  assert.match(src, /refsText, globalDigest/, 'Mock 分支应透传引用上下文');
+});
+
+test('prompts：ctxChat 模板含 @ 引用/全局摘要占位符与工具说明', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
+  assert.match(src, /\{refsText\}/);
+  assert.match(src, /\{globalDigest\}/);
+  assert.match(src, /search_content/, '普通模板应说明只读检索工具');
 });
