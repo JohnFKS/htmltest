@@ -533,7 +533,7 @@ window.NoteChat = (() => {
       const refs = opts.refs || [];
       const refsText = refs.map(r => NoteRefs.resolve(r).text).join('\n\n');
       const globalDigest = NoteRefs.digest();
-      const onRead = { search: NoteRefs.search, resolve: NoteRefs.resolve };
+      const onRead = { search: NoteRefs.search, resolve: NoteRefs.resolve, blocks: id => RichAsk.noteBlocks(id) };
       const res = useAgent
         ? await AI.ctxChat({
           noteTitle: s.noteTitle || note?.title || '当前笔记',

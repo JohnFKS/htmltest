@@ -332,7 +332,7 @@ window.AI = (() => {
       type: 'function',
       function: {
         name: 'read_content',
-        description: '按类型与 ID 读取任意一条内容的完整文本（笔记全文、整本题库、三本条目、模板、批注问答、历史对话等），用于跨对话/跨文档引用与对比。',
+        description: '按类型与 ID 读取任意一条内容的完整文本（笔记全文、整本题库、三本条目、模板、批注问答、历史对话等），用于跨对话/跨文档引用与对比；读取笔记时会附带编号块列表，供 edit_note 定位块。',
         parameters: {
           type: 'object',
           properties: {
@@ -349,7 +349,7 @@ window.AI = (() => {
       type: 'function',
       function: {
         name: 'edit_note',
-        description: '编辑当前笔记。需要修改笔记正文/标题时调用此工具；用户只是提问时不要调用。每次调用只做一个操作。',
+        description: '编辑笔记。默认编辑当前打开的笔记；传 noteId 可编辑任意笔记（跨笔记编辑）。用户只是提问时不要调用。每次调用只做一个操作。',
         parameters: {
           type: 'object',
           properties: {
@@ -359,7 +359,8 @@ window.AI = (() => {
             },
             html: { type: 'string', description: '要写入的受控 HTML 片段（replace_all 时为整篇 HTML）。禁止 script/style/img/a/id/事件属性，可用 p/h4-h6/ul/ol/li/table/b/strong/i/em/mark/code/pre/blockquote/span 及 $公式$。' },
             title: { type: 'string', description: 'rename_title 时的新标题' },
-            blockIndex: { type: 'integer', minimum: 0, description: '块序号，从 0 开始，对应【笔记块列表】里的编号' },
+            blockIndex: { type: 'integer', minimum: 0, description: '块序号，从 0 开始，对应目标笔记的块列表' },
+            noteId: { type: 'string', description: '可选：目标笔记 ID。学生要求编辑其他笔记（@ 引用或在问题里指名的）时必须传，ID 来自【全局内容摘要】或 read_content 结果；块编号用该笔记 read_content 返回的块列表编号，不要把其他笔记的内容写进当前打开的笔记' },
             reason: { type: 'string', description: '用一句话说明这次编辑做了什么，展示给用户确认' },
           },
           required: ['action', 'reason'],
@@ -388,6 +389,11 @@ window.AI = (() => {
       if (!kind || !id) return { ok: false, error: '缺少 kind 或 id' };
       try {
         const r = (onRead?.resolve || (() => ({ ok: false, error: '读取能力未就绪' })))({ kind, id });
+        // 笔记附带编号块列表：跨笔记 replace_block / insert_after_block 需要块编号
+        if (r?.ok && kind === 'note' && typeof onRead?.blocks === 'function') {
+          const bl = String(onRead.blocks(id) || '').trim();
+          if (bl) r.text += `\n\n【该笔记的块列表（编号从 0 起，供 replace_block / insert_after_block 使用）】\n${bl.slice(0, 12000)}`;
+        }
         return r;
       } catch (e) { return { ok: false, error: e.message || '读取失败' }; }
     }
@@ -408,6 +414,7 @@ window.AI = (() => {
         html: cleanHtml(String(args.html || '')),
         title: String(args.title || '').trim(),
         blockIndex: Number.isInteger(args.blockIndex) ? args.blockIndex : null,
+        noteId: String(args.noteId || '').trim() || null,
         reason: String(args.reason || '编辑笔记').slice(0, 200),
       });
     } catch (e) {

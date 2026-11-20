@@ -84,13 +84,13 @@ window.UI = (() => {
     return { close, el: mask, bodyEl };
   }
 
-  const confirm = (msg, { danger = false } = {}) => new Promise(resolve => {
+  const confirm = (msg, { danger = false, confirmLabel = '' } = {}) => new Promise(resolve => {
     modal({
       title: '确认', body: `<p>${U.esc(msg)}</p>`, width: 420, raw: true,
       onClose: () => resolve(false),
       actions: [
         { label: '取消' },
-        { label: danger ? '删除' : '确定', primary: !danger, danger, onClick: close => { resolve(true); close(); } },
+        { label: confirmLabel || (danger ? '删除' : '确定'), primary: !danger, danger, onClick: close => { resolve(true); close(); } },
       ],
     });
   });

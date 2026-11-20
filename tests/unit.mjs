@@ -168,7 +168,7 @@ test('note-chat：发送时附加并清空 refs，generate 传入引用全文/�
   assert.match(src, /pendingRefs\.splice\(0\)/, '发送时应消费 pendingRefs');
   assert.match(src, /refs: refs\.length \? refs : undefined/, '用户消息应携带 refs（气泡渲染 chip）');
   assert.match(src, /NoteRefs\.digest\(\)/, 'generate 应传全局内容摘要');
-  assert.match(src, /const onRead = \{ search: NoteRefs\.search, resolve: NoteRefs\.resolve \}/);
+  assert.match(src, /const onRead = \{ search: NoteRefs\.search, resolve: NoteRefs\.resolve, blocks: id => RichAsk\.noteBlocks\(id\) \}/);
   assert.match(src, /function extractRefs/, 'AI 回答应解析引用来源为可点击 chip');
   assert.match(src, /refs: cited\.length \? cited : undefined/, 'assistant 消息应携带解析出的引用');
   assert.match(src, /refs: user\.refs \|\| \[\]/, '重新生成应透传原引用');
@@ -183,9 +183,31 @@ test('provider：普通模式具备只读检索工具，edit_note 仅编辑模�
   assert.match(src, /refsText, globalDigest/, 'Mock 分支应透传引用上下文');
 });
 
+test('provider：edit_note 支持 noteId 跨笔记定位，read_content 附带块列表', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
+  assert.match(src, /noteId: \{ type: 'string'/, 'edit_note 应定义 noteId 参数');
+  assert.match(src, /noteId: String\(args\.noteId \|\| ''\)\.trim\(\) \|\| null/, 'toolResult 应透传 noteId');
+  assert.match(src, /onRead\?\.blocks/, 'read_content 应可附加块列表');
+  assert.match(src, /该笔记的块列表/, '块列表应有明确标题供模型定位块编号');
+});
+
+test('rich-ask：跨笔记编辑（noteId 解析 / 离线保存 / ai-agent 快照 / 确认框显示目标笔记）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
+  assert.match(src, /function executeNoteEdit\(\{ action, html, title, blockIndex, reason, noteId \}\)/);
+  assert.match(src, /const note = Store\.find\('notes', targetId\)/, '应按 noteId 解析目标笔记');
+  assert.match(src, /目标笔记：《/, '确认弹窗必须显示目标笔记名，避免编辑错对象');
+  assert.match(src, /replace_selection' && !canLive/, '未打开的笔记应拒绝 replace_selection（无选区）');
+  assert.match(src, /function snapshotVersion/, '离线编辑应有独立的版本快照逻辑');
+  assert.match(src, /source: 'ai-agent'/, '离线快照来源应为 ai-agent');
+  assert.match(src, /Store\.update\('notes', targetId, patch\)/, '离线编辑应持久化目标笔记');
+  assert.match(src, /const noteBlocks = \(noteId\) =>/, 'noteBlocks 应支持任意笔记');
+});
+
 test('prompts：ctxChat 模板含 @ 引用/全局摘要占位符与工具说明', () => {
   const src = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
   assert.match(src, /\{refsText\}/);
   assert.match(src, /\{globalDigest\}/);
   assert.match(src, /search_content/, '普通模板应说明只读检索工具');
+  assert.match(src, /必须传 noteId/, 'agent 模板应说明跨笔记编辑规则');
+  assert.match(src, /能看到的?\s*整个学习项目的全部内容|你能看到整个学习项目的全部内容/, '提示词应声明全局内容视野');
 });
