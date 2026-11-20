@@ -150,10 +150,19 @@ python3 server.py
 ## 🧪 测试
 
 ```bash
-npm i playwright && npx playwright install chromium   # 测试环境
+node --test tests/unit.mjs  # 零依赖单元测试（MD 转换 / 消毒 URL 策略 / 服务器结构校验），无需 npm
+npm i playwright && npx playwright install chromium   # 以下需先装 Playwright
 node tests/e2e.js          # Playwright 场景集（演示模式全流程，含笔记助教多轮对话）
 node tests/test-real-ai.mjs import|features|templates|vision|ask   # 真实 AI 分阶段测试（先在设置页配好 API）
 ```
+
+## 💾 数据安全（单人本地）
+
+- `data/db.json` 写入采用「临时文件 + fsync + 原子替换」，断电不会留下半截文件
+- 每次保存前自动留存**上一次完好状态**（`db.lastgood.json`），并按天滚动备份（最多 5 份到 `data/backups/`）
+- 主文件损坏时启动时自动尝试从 lastgood / 滚动备份恢复；设置页「数据管理」可查看备份列表并**一键恢复**（恢复前自动另存当前状态）
+- 笔记列表支持**本地全文搜索**（标题 + 正文纯文本，命中高亮）
+- 外来 HTML 粘贴先消毒再插入；`data:` URL 仅放行静态位图，拦截 `svg+xml` / `javascript:` 等危险协议
 
 覆盖：应用加载、笔记编辑、XSS 消毒抽查、相似度引擎单元检查、题库导入、作答（文本/手写）、演示 AI 批改、三本归档、模板新建路径、**高相似题归并路径**（召回→diff→裁决→归并→扩容）、批注绘制/撤销/导出、圈选提问、**笔记助教多轮对话、历史会话与长期记忆压缩**、提示词编辑、数据持久化。
 

@@ -24,6 +24,10 @@ window.Api = {
   getConfig() { return this._get('/api/config').then(d => d.config); },
   saveConfig(config) { return this._post('/api/config', { config }); },
 
+  // 本地滚动备份与一键恢复（单人本地应用，防误删）
+  getBackups() { return this._get('/api/backups').then(d => d.backups); },
+  restoreBackup(name) { return this._post('/api/restore', { name }); },
+
   // dataURL 存为图片文件，返回 {url}
   async upload(dataUrl, name) {
     const d = await this._post('/api/upload', { dataUrl, name });

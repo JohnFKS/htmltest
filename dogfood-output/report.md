@@ -251,3 +251,37 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
 | 控制台错误 | 无 | eval 捕获 |
 
 ---
+
+## 第五轮：单人本地场景的健壮性改进（2026-11-20）
+
+针对"单人本地部署、不商业化"的定位，聚焦**数据安全、健壮性、易用性**，不做商业化所需的协同/构建/内核替换等过度工程化改造。
+
+### 改进清单
+
+| # | 改进 | 实现 | 取舍说明 |
+|---|------|------|----------|
+| 1 | 写盘更耐久 | `server.py` 的 `save_json` 加 `flush + fsync` 后再 `os.replace` | 断电不会留下半截 JSON；零成本 |
+| 2 | 自动滚动备份 | 每次 `/api/state` 保存前先拷贝完好状态到 `db.lastgood.json`；每日首次写盘留 `backups/db-YYYYMMDD.json`，最多 5 份 | 防误删；不引入 SQLite/事务（单人本地没必要） |
+| 3 | 损坏自动恢复 | `load_db()`：主文件不可用时依次尝试 lastgood / 最新滚动备份；`load_json` 保留 `.corrupt.bak` | 启动即自愈，无需手工介入 |
+| 4 | 一键恢复 UI | 新增 `GET /api/backups` / `POST /api/restore`；设置页「数据管理」列出备份并可点击恢复（恢复前自动另存当前状态）；文件名正则校验防路径穿越 | 用户可自助回退 |
+| 5 | 结构校验 | `is_valid_db()` 校验 `notes/banks/entries` 为数组，非法结构拒绝写入/恢复 | 防止把坏数据固化 |
+| 6 | 消毒加固 | `data:` URL 仅放行 `image/(png\|jpe?g\|gif\|webp);base64`，DOMPurify 与内置分支同策略；拦截含控制字符/混淆的 `javascript:` | 堵住 SVG XSS / 混淆协议 |
+| 7 | 粘贴防御 | 外来 HTML 粘贴先 `Sanitize.html()` 再插入 | 外部复制内容不会把 onclick/危险 style 带入本地笔记 |
+| 8 | 笔记全文搜索 | 侧栏新增搜索框，按标题 + 正文纯文本过滤，标题命中优先排序，命中片段高亮 | 笔记变多后的刚需，纯前端零依赖 |
+| 9 | 零依赖单测 | `tests/unit.mjs` 用 Node 内置 `node:test`，最小 stub 加载真实源码，覆盖 MD 转换、消毒 URL 策略、服务器结构校验（5 项全过） | 无需 `npm install` / Playwright 即可基础回归 |
+
+### 复测结果
+
+| 检查项 | 结果 | 证据 |
+|--------|------|------|
+| 保存后生成 lastgood + 每日备份 | 通过， backups API 返回 2 份 | 浏览器 eval + curl |
+| 路径穿越被拒 | 通过，`../../etc/passwd` 返回「无效的备份文件名」 | curl |
+| 主文件损坏后自动恢复 | 通过，注入 `{broken` 后 GET 仍返回 2 篇笔记 | curl |
+| 笔记搜索 | 通过，搜 "E2E" 命中 1 条且高亮；无匹配显示空态 | 浏览器 eval |
+| 危险 URL 消毒 | 通过，svg+xml / javascript 链接被清空 href，png dataURL 与相对路径保留 | 浏览器 eval |
+| 设置页备份列表 + 恢复按钮 | 通过 | `screenshots/70-settings-backups.png` |
+| `node --test tests/unit.mjs` | 5/5 通过 | 终端输出 |
+| `python3 -m py_compile server.py` | 通过 | 终端输出 |
+| 3 视口 × 9 页面横向溢出 | 全部 ALL_OK | 脚本巡检 |
+
+---

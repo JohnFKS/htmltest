@@ -92,6 +92,11 @@ Views.settings = {
             <button class="btn btn-danger" id="data-clear">清空全部数据</button>
           </div>
           <div class="field-hint">数据存储在 data/db.json + data/images/；导出含图片的备份体积较大，导入时自动重建图片文件</div>
+          <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+            <div class="field-label">自动备份（每次保存前留存，最多 5 份 + 上一次完好状态；主文件损坏时自动尝试恢复）</div>
+            <div id="backup-list" class="muted" style="font-size:13px;margin:6px 0">加载中…</div>
+            <button class="btn btn-sm" id="backup-refresh">刷新备份列表</button>
+          </div>
           <div class="field" style="margin-top:12px">
             <label class="field-label">OCR（预留，暂未实现）</label>
             <label class="checkbox-row" style="opacity:.5"><input type="checkbox" disabled><span>启用本地 OCR 识别手写/照片作答（后续可接 PaddleOCR）</span></label>
@@ -230,6 +235,35 @@ Views.settings = {
       U.download(`智学笔记备份-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ db, config: { ...Store.config, ai: { ...Store.config.ai, apiKey: '' } } }));
       UI.toast('备份已导出（API Key 不包含在备份中）', 'success');
     };
+    // 自动备份列表 + 一键恢复
+    const backupListEl = container.querySelector('#backup-list');
+    const renderBackups = async () => {
+      let items = [];
+      try { items = await Api.getBackups(); } catch (e) { backupListEl.textContent = `备份读取失败：${e.message}`; return; }
+      if (!items.length) {
+        backupListEl.innerHTML = '暂无自动备份（保存一次笔记后自动生成）';
+        return;
+      }
+      backupListEl.innerHTML = items.map(b =>
+        `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px dashed var(--line)">
+          <span style="flex:1">${U.esc(b.name)} <span class="muted">· ${U.esc(b.time)} · ${(b.size / 1024).toFixed(1)}KB</span></span>
+          <button class="btn btn-sm" data-restore="${U.esc(b.name)}">恢复</button>
+        </div>`).join('');
+      backupListEl.querySelectorAll('[data-restore]').forEach(btn => btn.onclick = async () => {
+        if (!await UI.confirm(`将用「${btn.dataset.restore}」覆盖当前数据，确定恢复？`, { danger: true })) return;
+        try {
+          await Api.restoreBackup(btn.dataset.restore);
+          UI.toast('恢复成功，正在重新加载', 'success');
+          await Store.init();
+          App.route('settings');
+        } catch (e) {
+          UI.toast(`恢复失败：${e.message}`, 'error');
+        }
+      });
+    };
+    container.querySelector('#backup-refresh').onclick = renderBackups;
+    renderBackups();
+
     container.querySelector('#data-export').onclick = () => exportData(false);
     container.querySelector('#data-export-img').onclick = () => exportData(true);
 

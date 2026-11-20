@@ -32,6 +32,10 @@ DATA_DIR = ROOT / "data"
 IMAGES_DIR = DATA_DIR / "images"
 DB_PATH = DATA_DIR / "db.json"
 CONFIG_PATH = DATA_DIR / "config.json"
+BACKUP_DIR = DATA_DIR / "backups"
+LASTGOOD_PATH = DATA_DIR / "db.lastgood.json"
+MAX_BACKUPS = 5           # 滚动备份保留份数（每天首次写盘各留一份）
+MIN_VALID_BYTES = 20      # 小于此视为不完整写入
 
 # 全量 db 的写锁（单用户本地应用，读写都很轻）
 _io_lock = threading.Lock()
@@ -79,6 +83,12 @@ DEFAULT_CONFIG = {
 def ensure_dirs():
     DATA_DIR.mkdir(exist_ok=True)
     IMAGES_DIR.mkdir(exist_ok=True)
+    BACKUP_DIR.mkdir(exist_ok=True)
+
+
+def is_valid_db(obj):
+    """基本结构校验：防止把损坏/错误结构的数据写成 lastgood。"""
+    return isinstance(obj, dict) and all(isinstance(obj.get(k), list) for k in ("notes", "banks", "entries"))
 
 
 def load_json(path: Path, default):
@@ -101,7 +111,29 @@ def save_json(path: Path, obj):
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, path)
+
+
+def load_db():
+    """加载 db：主文件损坏时依次尝试 lastgood / 最新滚动备份，再退回默认值。"""
+    result = load_json(DB_PATH, None)
+    if result is not None and is_valid_db(result):
+        return result
+    for candidate in [LASTGOOD_PATH] + sorted(BACKUP_DIR.glob("db-*.json"), reverse=True):
+        if not candidate.exists():
+            continue
+        try:
+            with open(candidate, "r", encoding="utf-8") as f:
+                obj = json.load(f)
+            if is_valid_db(obj):
+                print(f"[恢复] {DB_PATH.name} 不可用，已从 {candidate.name} 恢复")
+                return obj
+        except (json.JSONDecodeError, OSError):
+            continue
+    # load_json(None) 在主文件损坏时已留 .corrupt.bak，这里直接回默认
+    return json.loads(json.dumps(DEFAULT_DB, ensure_ascii=False))
 
 
 def ai_endpoint(base_url: str, kind: str) -> str:
@@ -238,10 +270,19 @@ class Handler(SimpleHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/api/state":
             with _io_lock:
-                return self.send_json({"db": load_json(DB_PATH, DEFAULT_DB)})
+                return self.send_json({"db": load_db()})
         if path == "/api/config":
             with _io_lock:
                 return self.send_json({"config": load_json(CONFIG_PATH, DEFAULT_CONFIG)})
+        if path == "/api/backups":
+            items = []
+            for p in sorted(BACKUP_DIR.glob("db-*.json"), reverse=True):
+                st = p.stat()
+                items.append({"name": p.name, "size": st.st_size, "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))})
+            if LASTGOOD_PATH.exists():
+                st = LASTGOOD_PATH.stat()
+                items.insert(0, {"name": LASTGOOD_PATH.name, "size": st.st_size, "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))})
+            return self.send_json({"backups": items})
         m = re.match(r"^/images/([\w.\-]+)$", path)
         if m:
             f = IMAGES_DIR / m.group(1)
@@ -261,8 +302,49 @@ class Handler(SimpleHTTPRequestHandler):
             db = data.get("db")
             if not isinstance(db, dict):
                 return self.send_json({"error": "db 必须是对象"}, 400)
+            if not is_valid_db(db):
+                return self.send_json({"error": "db 结构不完整（notes/banks/entries 必须是数组）"}, 400)
             with _io_lock:
+                # 写前留一份"上一次完好状态"，并每日首次写盘做滚动备份
+                try:
+                    if DB_PATH.exists() and DB_PATH.stat().st_size >= MIN_VALID_BYTES:
+                        shutil.copy2(DB_PATH, LASTGOOD_PATH)
+                        stamp = time.strftime("%Y%m%d")
+                        daily = BACKUP_DIR / f"db-{stamp}.json"
+                        if not daily.exists():
+                            shutil.copy2(DB_PATH, daily)
+                            backups = sorted(BACKUP_DIR.glob("db-*.json"))
+                            for old in backups[:-MAX_BACKUPS]:
+                                try:
+                                    old.unlink()
+                                except OSError:
+                                    pass
+                except OSError:
+                    pass  # 备份失败不阻断主写盘
                 save_json(DB_PATH, db)
+            return self.send_json({"ok": True})
+
+        if path == "/api/restore":
+            name = data.get("name") or ""
+            # 仅允许恢复本应用生成的备份文件名，防路径穿越
+            if not re.fullmatch(r"db(\.lastgood|\-\d{8})\.json", name):
+                return self.send_json({"error": "无效的备份文件名"}, 400)
+            src = (DATA_DIR if name == LASTGOOD_PATH.name else BACKUP_DIR) / name
+            try:
+                with open(src, "r", encoding="utf-8") as f:
+                    obj = json.load(f)
+                if not is_valid_db(obj):
+                    return self.send_json({"error": "该备份结构不完整，无法恢复"}, 400)
+            except (OSError, json.JSONDecodeError) as e:
+                return self.send_json({"error": f"备份读取失败：{e}"}, 400)
+            with _io_lock:
+                # 恢复前先把当前（可能更新）的状态另存一份，避免丢失
+                if DB_PATH.exists() and DB_PATH.stat().st_size >= MIN_VALID_BYTES:
+                    try:
+                        shutil.copy2(DB_PATH, DATA_DIR / "db.before-restore.json")
+                    except OSError:
+                        pass
+                save_json(DB_PATH, obj)
             return self.send_json({"ok": True})
 
         if path == "/api/config":

@@ -9,6 +9,7 @@ Views.notes = {
       <div class="notes-layout">
         <div class="notes-list" data-pane="side">
           <button class="btn btn-primary" id="note-new" style="width:100%;margin-bottom:12px">${Icon.svg('plus', 15)} 新建笔记</button>
+          <input class="input" id="note-search" placeholder="搜索标题 / 正文…" style="width:100%;margin-bottom:10px">
           <div id="note-list"></div>
         </div>
         <div class="notes-editor" data-pane="main">
@@ -38,8 +39,10 @@ Views.notes = {
     this._panes = Panes.bind(container.querySelector('.notes-layout'), { key: 'notes', initial: 260, min: 200, max: 420 });
 
     const listEl = container.querySelector('#note-list');
+    const searchEl = container.querySelector('#note-search');
     const editor = container.querySelector('#editor-area');
     const titleInput = container.querySelector('#note-title');
+    this._search = '';
     this.currentId = this.currentId && Store.find('notes', this.currentId) ? this.currentId : (notes[0]?.id || null);
 
     // ---------- 保存状态 / 版本历史 ----------
@@ -56,17 +59,36 @@ Views.notes = {
     this._statusInfo = () => ({ dirty, lastVersionAt, versions: versionsOf(this.currentId) });
 
     // ---------- 列表 ----------
+    // 搜索命中片段高亮（先转义再包裹，避免 XSS）
+    this._highlight = (text, q) => {
+      const safe = U.esc(text);
+      if (!q) return safe;
+      const i = safe.toLowerCase().indexOf(U.esc(q).toLowerCase());
+      if (i < 0) return safe;
+      return safe.slice(0, i) + '<mark>' + safe.slice(i, i + U.esc(q).length) + '</mark>' + safe.slice(i + U.esc(q).length);
+    };
+
     const renderList = () => {
-      const notes2 = Store.coll('notes');
+      let notes2 = Store.coll('notes');
       if (!notes2.length) { listEl.innerHTML = UI.emptyState('还没有笔记，点上方「新建笔记」'); return; }
+      // 本地全文搜索：标题 + 正文纯文本（大小写不敏感），结果按相关度粗排（标题命中优先）
+      const q = this._search.trim().toLowerCase();
+      if (q) {
+        const hit = n => (n.title || '').toLowerCase().includes(q) || U.stripHtml(n.content || '').toLowerCase().includes(q);
+        notes2 = notes2.filter(hit).sort((a, b) =>
+          (b.title || '').toLowerCase().includes(q) - (a.title || '').toLowerCase().includes(q));
+      }
+      if (!notes2.length) { listEl.innerHTML = UI.emptyState(`没有匹配「${this._search}」的笔记`); return; }
       listEl.innerHTML = notes2.map(n => `
         <div class="note-item ${n.id === this.currentId ? 'active' : ''}" data-id="${n.id}">
-          <div class="note-item-title">${U.esc(n.title || '无标题')}</div>
+          <div class="note-item-title">${this._highlight(n.title || '无标题', q)}</div>
           <div class="note-item-sub">${U.fmt(n.updatedAt || n.createdAt)}</div>
         </div>`).join('');
       listEl.querySelectorAll('.note-item').forEach(el => el.onclick = () => this.open(el.dataset.id, editor, titleInput));
       Ktx.renderMath(listEl);
     };
+
+    searchEl.oninput = U.debounce(e => { this._search = e.target.value; renderList(); }, 150);
 
     // ---------- 打开 ----------
     this.open = (id, edEl, tEl) => {
@@ -249,6 +271,19 @@ Views.notes = {
         Ktx.renderMath(editor);
         afterEdit();
         UI.toast('已按 Markdown 转换插入');
+        return;
+      }
+      // 外来 HTML 粘贴：先消毒再插入，避免 onclick/危险 style/javascript: 进入本地笔记
+      const html = e.clipboardData?.getData('text/html') || '';
+      if (html) {
+        const safe = Sanitize.html(html);
+        if (safe !== html) {
+          e.preventDefault();
+          document.execCommand('insertHTML', false, safe);
+          Ktx.renderMath(editor);
+          afterEdit();
+          UI.toast('已过滤粘贴内容中的不安全 HTML', 'warn');
+        }
       }
     });
 

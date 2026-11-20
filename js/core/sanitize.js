@@ -23,12 +23,17 @@ window.Sanitize = (() => {
     div: ['contenteditable', 'tabindex'],
   };
   const CLASS_RE = /^[a-zA-Z0-9_\- ]{0,120}$/;
-  const SAFE_URL_RE = /^(https?:|\/|\.\/|#|data:image\/)/i;
+  // data: 只允许静态位图（禁止 svg+xml 等可携带脚本的类型）；其余仅安全协议/相对路径
+  const SAFE_DATA_IMG_RE = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i;
+  const SAFE_URL_RE = /^(https?:|\/|\.\/|#)/i;
 
   function safeUrl(v) {
     v = String(v || '').trim();
-    // 禁止 javascript: / vbscript: 等协议
-    return SAFE_URL_RE.test(v) && !v.toLowerCase().includes('javascript:') ? v : '';
+    if (SAFE_DATA_IMG_RE.test(v)) return v;
+    const low = v.toLowerCase();
+    // 禁止 javascript: / vbscript: 等协议及混淆形式（空白/实体编码的冒号）
+    if (/[\x00-\x1f]/.test(low) || low.includes('javascript:') || low.includes('vbscript:')) return '';
+    return SAFE_URL_RE.test(v) ? v : '';
   }
 
   function clean(root) {
@@ -79,6 +84,11 @@ window.Sanitize = (() => {
     DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
       if (data.attrName === 'style') {
         const safe = filterStyle(data.attrValue);
+        if (!safe) data.keep = false;
+        else data.attrValue = safe;
+      } else if (data.attrName === 'href' || data.attrName === 'src') {
+        // 与内置分支同策略：拦截 javascript: / svg+xml 等危险 URL
+        const safe = safeUrl(data.attrValue);
         if (!safe) data.keep = false;
         else data.attrValue = safe;
       }
