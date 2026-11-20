@@ -12,22 +12,24 @@ Views.notes = {
           <div id="note-list"></div>
         </div>
         <div class="notes-editor" data-pane="main">
-          <div class="note-editor-head">
-            <input class="note-title-input" id="note-title" placeholder="笔记标题…">
-            <div class="note-head-actions">
-              <button class="btn btn-primary btn-sm" id="note-save" title="保存为一个版本（Ctrl+S）">💾 保存</button>
-              <button class="btn btn-ghost btn-sm" id="note-history" title="查看/恢复历史版本，永久保存或删除">🕘 历史</button>
-              <button class="btn btn-ghost btn-sm" id="note-autosave" title="设置自动保存间隔与版本保留数量">⚙ 保存设置</button>
-              <span class="note-head-sep"></span>
-              <button class="btn btn-ghost btn-sm" id="note-md-import" title="把 Markdown 文本转换为富文本块追加到笔记">MD 粘贴转换</button>
-              <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">📄 导入文件</button>
-              <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">📕 导入 PDF</button>
-              <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
-              <button class="btn btn-ghost btn-sm" id="note-chat-open" title="打开右侧笔记助教：多轮提问与历史对话">💬 笔记助教</button>
-              <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">导出 HTML</button>
+          <div class="note-editor-top">
+            <div class="note-editor-head">
+              <input class="note-title-input" id="note-title" placeholder="笔记标题…">
+              <div class="note-head-actions">
+                <button class="btn btn-primary btn-sm" id="note-save" title="保存为一个版本（Ctrl+S）">💾 保存</button>
+                <button class="btn btn-ghost btn-sm" id="note-history" title="查看/恢复历史版本，永久保存或删除">🕘 历史</button>
+                <button class="btn btn-ghost btn-sm" id="note-autosave" title="设置自动保存间隔与版本保留数量">⚙ 保存设置</button>
+                <span class="note-head-sep"></span>
+                <button class="btn btn-ghost btn-sm" id="note-md-import" title="把 Markdown 文本转换为富文本块追加到笔记">MD 粘贴转换</button>
+                <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">📄 导入文件</button>
+                <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">📕 导入 PDF</button>
+                <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
+                <button class="btn btn-ghost btn-sm" id="note-chat-open" title="打开右侧笔记助教：多轮提问与历史对话">💬 笔记助教</button>
+                <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">导出 HTML</button>
+              </div>
             </div>
+            <div class="editor-toolbar" id="editor-toolbar"></div>
           </div>
-          <div class="editor-toolbar" id="editor-toolbar"></div>
           <div class="editor-area rich" id="editor-area" contenteditable="true" data-ph="开始书写…支持表格、折叠块、公式 $E=mc^2$、代码块，可直接 Ctrl+V 粘贴图片或 Markdown"></div>
           <div class="muted" style="margin-top:8px" id="note-status"></div>
         </div>

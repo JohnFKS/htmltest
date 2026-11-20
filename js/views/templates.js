@@ -11,7 +11,7 @@ Views.templates = {
     container.innerHTML = `
       <h1 class="page-title">做题模板库</h1>
       <div class="page-sub">每道新题入库前，都会先与库内模板做三级相似度比对，由大模型裁决归并或新建——证据全程透明，可人工覆写</div>
-      <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+      <div class="sticky-head" style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
         <input class="input" id="tpl-search" style="max-width:280px" placeholder="搜索模板…" value="${U.esc(this.search)}">
         <span class="muted">共 <b>${templates.length}</b> 个模板</span>
         <span style="flex:1"></span>

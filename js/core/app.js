@@ -18,10 +18,18 @@ window.App = {
     await Store.init();
     Ktx.init();
     this.buildNav();
+    this.updateTopbarHeight();
+    window.addEventListener('resize', () => this.updateTopbarHeight());
     Store.on('config-changed', () => this.updateBadge());
     this.updateBadge();
     window.addEventListener('hashchange', () => this.route(location.hash.slice(1)));
     this.route(location.hash.slice(1) || 'dashboard');
+  },
+
+  updateTopbarHeight() {
+    const topbar = document.querySelector('.topbar');
+    if (!topbar) return;
+    document.documentElement.style.setProperty('--topbar-h', Math.round(topbar.getBoundingClientRect().height) + 'px');
   },
 
   buildNav() {

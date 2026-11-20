@@ -16,14 +16,16 @@ Views.books = {
     container.innerHTML = `
       <h1 class="page-title">三本</h1>
       <div class="page-sub">错题本 · 好题本 · 模板本——三本中的题目都可以「生成做题模板」进入模板库</div>
-      <div class="book-tabs" id="book-tabs">
-        ${this.KINDS.map(([k, label, cls]) => `<button class="book-tab ${k === this.kind ? 'active-' + cls : ''}" data-k="${k}">${label}</button>`).join('')}
-      </div>
-      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
-        <input class="input" id="book-search" style="max-width:280px" placeholder="搜索题干 / 解析…" value="${U.esc(this.search)}">
-        <span class="muted">共 <b id="book-count">0</b> 条</span>
-        <span style="flex:1"></span>
-        <button class="btn btn-sm" id="book-export">导出本本（JSON）</button>
+      <div class="sticky-head">
+        <div class="book-tabs" id="book-tabs">
+          ${this.KINDS.map(([k, label, cls]) => `<button class="book-tab ${k === this.kind ? 'active-' + cls : ''}" data-k="${k}">${label}</button>`).join('')}
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:8px;flex-wrap:wrap;align-items:center;padding-top:8px">
+          <input class="input" id="book-search" style="max-width:280px" placeholder="搜索题干 / 解析…" value="${U.esc(this.search)}">
+          <span class="muted">共 <b id="book-count">0</b> 条</span>
+          <span style="flex:1"></span>
+          <button class="btn btn-sm" id="book-export">导出本本（JSON）</button>
+        </div>
       </div>
       <div id="book-list"></div>`;
 

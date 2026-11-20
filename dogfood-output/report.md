@@ -61,6 +61,12 @@
 | 批注页右侧栏拖拽/折叠 | 通过，300px → 378px，折叠后网格右侧归零 | `screenshots/42-annot-panes.png`, `43-annot-collapsed.png` |
 | 刷题页侧栏折叠 | 通过 | `screenshots/44-quiz-collapsed.png` |
 | 弹窗右下角缩放 | 通过，780×275 → 862×338 | `screenshots/45-modal-resized.png` |
+| 长笔记滚动工具栏保持可见 | 通过，编辑器滚动 1686px，工具栏 top 始终 183px，页面无整体滚动 | `screenshots/46-notes-toolbar-sticky.png` |
+| 刷题页标签栏吸顶 | 通过，滚动 562px 后 tab top = 54px | `screenshots/47-quiz-tabs-sticky.png` |
+| 三本筛选区吸顶 | 通过，滚动 600px 后 sticky-head top = 54px | `screenshots/48-books-sticky.png` |
+| 模板库筛选区吸顶 | 通过，滚动 600px 后 sticky-head top = 54px | `screenshots/49-templates-sticky.png` |
+| 窄屏顶栏动态高度 | 通过，顶栏实际 90px，`--topbar-h` 同步为 90px | `screenshots/50-mobile-toolbar.png` |
+| 批注页工具区 | 通过，页面不整体滚动，工具区在固定视口内独立滚动 | N/A |
 
 ## Issues
 
