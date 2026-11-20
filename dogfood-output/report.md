@@ -2,10 +2,10 @@
 
 | Field | Value |
 |-------|-------|
-| **Date** | 2026-11-18 |
+| **Date** | 2026-11-20 |
 | **App URL** | http://127.0.0.1:8899 |
-| **Session** | notechat-ad45f54631b6 |
-| **Scope** | 选中文本提问、多轮追问、多会话/历史会话、长期记忆压缩、笔记手动/自动保存、版本历史与回退、永久保存与清理、按选中位置插入 AI 批注、悬浮可编辑批注、分栏折叠/拖拽、弹窗缩放、多尺寸避让、真实 API、控制台错误 |
+| **Session** | notechat-ad45f54631b6 / displayaudit-ad45f54631b6 |
+| **Scope** | 选中文本提问、多轮追问、多会话/历史会话、长期记忆压缩、笔记手动/自动保存、版本历史与回退、永久保存与清理、按选中位置插入 AI 批注、悬浮可编辑批注、分栏折叠/拖拽、弹窗缩放、多尺寸避让、全页面显示 bug 巡检、真实 API、控制台错误 |
 
 ## Summary
 
@@ -143,5 +143,45 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
 ![修复后折叠](screenshots/53-notes-collapsed-fixed.png)
 ![修复后展开](screenshots/54-notes-expanded-fixed.png)
 ![批注页](screenshots/55-annot-collapsed-fixed.png)
+
+---
+
+## 第二轮：全页面显示 bug 全面审查（2026-11-20）
+
+| Field | Value |
+|-------|-------|
+| **Session** | displayaudit-ad45f54631b6 |
+| **工具** | agent-browser（CDP）· 6 种视口 × 9 个页面 + 折叠/对话栏/弹窗/滚动状态 |
+| **视口** | 1440×900 / 1000×800 / 900×800 / 760×800 / 390×844 / 320×700 |
+
+本轮用脚本遍历全部页面，检测 `documentElement.scrollWidth > clientWidth` 的横向溢出、越界元素、折叠态可达性、长图滚动可达性、弹窗/对话栏层级、sticky 吸顶、控制台错误。共发现并修复 9 个问题，复测后 **6 种视口 × 9 页面全部无横向溢出，控制台错误为空**。
+
+### 本轮修复清单
+
+| # | 问题 | 现象 | 修复 |
+|---|------|------|------|
+| 1 | 仪表盘 KaTeX 横向溢出 | 390/320px 下最近作答的公式读屏 MathML（`position:absolute`）脱离包含块，把页面撑到 469px | `.katex { position: relative }` + `body { overflow-x: clip }`；考点掌握度行改 `flex-wrap` 且 chip `min-width` 110px |
+| 2 | 折叠侧栏窄屏无法恢复 | 桌面折叠后持久化，≤900px 手柄隐藏，侧栏 `display:none` 永久不可见 | ≤900px 媒体查询内覆盖 `.pane-collapsed [data-pane=side]` 恢复 `display`，侧栏始终可见 |
+| 3 | 截图批注长图顶部不可达 | `.annot-stage` 用 flex 居中，底图高于舞台时顶部落在负滚动区，`scrollTop=0` 仍看不到 | 改为 `display:grid; place-items:center` + 子元素 `margin:auto`，内容更大时退化为起点对齐 |
+| 4 | 弹窗内右键提问对话栏被遮罩 | ctx-menu(260) 高于 modal(200) 可点击，但 drawer(120) 被 modal 覆盖无法操作 | `openAsk` 打开对话栏前先关闭所有 modal |
+| 5 | 手绘板固定 760px 横向溢出 | 主栏宽度 < 760px 时画布撑破布局 | `.draw-canvas-wrap canvas { max-width:100%; height:auto }`，坐标换算已按 `canvas.width/rect.width` 比例 |
+| 6 | 满高布局窄屏底部留白 | `notes-layout`/`annot-layout` 固定减 44px（桌面 padding），窄屏 padding 14px 导致底部多留 16px | 引入 `--view-pad` 变量，满高布局减 `--view-pad * 2`，媒体查询同步 |
+| 7 | AI 悬浮批注卡片越界/被裁剪 | 靠近编辑区右缘或底部时卡片被 `overflow` 裁剪 | `notes.js` 新增按编辑区可视框的像素级钳制（左右/上下），缩放与滚动时重排 |
+| 8 | 帮助页表格窄屏溢出 | 帮助文档表格无横向滚动 | ≤700px 下 `.help-doc table` 可横向滚动；设置栅格单列化 |
+| 9 | 顶栏高度变更未同步 | 窄屏顶栏换行后 sticky 偏移依赖窗口 resize 事件 | 保留 `updateTopbarHeight()`，配合 `--view-pad` 变量统一偏移 |
+
+### 复测结果
+
+| 检查项 | 结果 | 证据 |
+|--------|------|------|
+| 6 视口 × 9 页面横向溢出 | 全部通过（无 `scrollWidth > clientWidth`） | 脚本巡检输出 |
+| 折叠侧栏后主内容占满 | 通过，窄屏侧栏始终可见 | `screenshots/56-notes-collapsed-main-ok.png` |
+| 长图顶部可达 | 通过，`scrollTop=0` 时底图 top 相对舞台为 +17px | `screenshots/57-annot-tall-image-top-reachable.png` |
+| 320px 仪表盘不溢出 | 通过，`scrollWidth = clientWidth = 320` | `screenshots/58-dashboard-320-no-overflow.png` |
+| AI 卡片对话栏打开时不越界 | 通过，卡片右缘 410 < 编辑区右缘 418 | `screenshots/59-ai-card-clamped-chat-open.png` |
+| 900px 手绘板不溢出 | 通过，画布 760→等比缩放 | `screenshots/60-quiz-draw-canvas-900.png` |
+| 弹窗内右键提问 | 通过，弹窗关闭、对话栏打开 | 浏览器 eval |
+| sticky 工具栏/标签/筛选区 | 通过，滚动后 tabs top=54=顶栏高 | 浏览器 eval |
+| 控制台错误 | 无 | `window.error` + `unhandledrejection` 捕获为 `[]` |
 
 ---

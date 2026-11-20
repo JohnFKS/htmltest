@@ -29,6 +29,7 @@
   --warn: #b98a2f;   --warn-soft: #f7efdc;
   --danger: #c0392b;
   --topbar-h: 54px;   /* 由 app.js 按顶栏实际高度更新，供 sticky 操作区避让 */
+  --view-pad: 22px;   /* 视图内边距，供满高布局按实际尺寸计算，避免窄屏底部留白 */
 
   --radius: 10px;
   --radius-sm: 7px;
@@ -74,8 +75,10 @@ body {
 .ai-badge.demo { background: var(--warn-soft); color: var(--warn); border: 1px solid #e5d5ab; }
 .ai-badge.live { background: var(--good-soft); color: var(--good); border: 1px solid #bfe0d2; }
 
-.view { flex: 1; padding: 22px; max-width: 1280px; width: 100%; margin: 0 auto; }
+.view { flex: 1; padding: var(--view-pad); max-width: 1280px; width: 100%; margin: 0 auto; }
 .view-narrow { max-width: 900px; }
+/* 禁止任何子内容把页面撑出横向滚动；sticky 仍可用（overflow-x 不创建滚动容器时使用 clip） */
+body { overflow-x: clip; }
 /* 页面级操作区吸顶：避开 sticky 顶栏，保持按钮/搜索始终可点 */
 .sticky-head {
   position: sticky; top: var(--topbar-h); z-index: 30;
@@ -300,7 +303,7 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 /* ============================================================
    笔记工作台
    ============================================================ */
-.notes-layout { display: grid; height: calc(100vh - var(--topbar-h) - 44px); }
+.notes-layout { display: grid; height: calc(100vh - var(--topbar-h) - var(--view-pad) * 2); }
 .notes-layout > * { min-height: 0; }
 .notes-list { overflow-y: auto; }
 .note-item {
@@ -388,16 +391,22 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 /* ============================================================
    截图批注
    ============================================================ */
-.annot-layout { display: flex; flex-direction: column; gap: 12px; height: calc(100vh - var(--topbar-h) - 44px); }
+.annot-layout { display: flex; flex-direction: column; gap: 12px; height: calc(100vh - var(--topbar-h) - var(--view-pad) * 2); }
 .annot-main { display: grid; flex: 1; min-height: 0; }
 .annot-stage-wrap { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .annot-stage {
   flex: 1; overflow: auto; background: repeating-conic-gradient(#eceae2 0% 25%, #f6f4ee 0% 50%) 50% / 24px 24px;
   border: 1px solid var(--line); border-radius: var(--radius);
-  display: flex; align-items: center; justify-content: center; position: relative; padding: 16px;
+  display: grid; place-items: center; position: relative; padding: 16px;
 }
-.annot-canvas-box { position: relative; box-shadow: var(--shadow-lg); background: #fff; max-width: 100%; }
-.annot-canvas-box canvas { display: block; max-width: 100%; }
+/* 用 grid 居中而非 flex：底图高于舞台时 flex 居中会让顶部滚不到（负 top 不可达）；
+   place-items:center + margin auto 在内容更大时自动退化为起点对齐，顶部始终可达 */
+.annot-stage > * { margin: auto; }
+.annot-canvas-box { position: relative; box-shadow: var(--shadow-lg); background: #fff; max-width: none; }
+.annot-canvas-box canvas { display: block; max-width: none; }
+/* 手绘板等固定像素画布：主栏变窄时等比缩放，避免横向溢出 */
+.draw-canvas-wrap { max-width: 100%; }
+.draw-canvas-wrap canvas { max-width: 100%; height: auto; }
 .annot-overlay { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
 .annot-drop {
   position: absolute; inset: 12px; border: 2px dashed var(--line-2); border-radius: var(--radius);
@@ -506,6 +515,9 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
 .help-doc pre { background: #2a2721; color: #eee7d9; padding: 14px 18px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
 .help-doc code { font-family: var(--mono); }
 
+/* KaTeX 的读屏 MathML 层为 position:absolute；以公式自身为包含块，
+   避免在 nowrap / 省略号容器或窄屏里把页面撑出横向滚动条 */
+.katex { position: relative; }
 /* katex 降级提示 */
 .katex-src { background: #fffbe8; outline: 1px dashed #e5d5ab; }
 
@@ -772,12 +784,16 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
 
 /* 响应式 */
 @media (max-width: 900px) {
+  :root { --view-pad: 14px; }
   .notes-layout, .quiz-layout, .annot-main,
   .notes-layout.pane-side-right, .quiz-layout.pane-side-right, .annot-main.pane-side-right,
   .notes-layout.pane-collapsed, .quiz-layout.pane-collapsed, .annot-main.pane-collapsed { grid-template-columns: 1fr; }
   .pane-handle { display: none; }
+  /* 窄屏手柄隐藏，折叠状态不再生效：侧栏始终可见，避免持久折叠后无法恢复 */
+  .notes-layout.pane-collapsed [data-pane="side"],
+  .quiz-layout.pane-collapsed [data-pane="side"] { display: block; }
+  .annot-main.pane-collapsed [data-pane="side"] { display: flex; }
   .notes-list, .quiz-side, .annot-side { max-height: 220px; }
-  .view { padding: 14px; }
 }
 @media (max-width: 700px) {
   /* 顶栏换行：品牌一行，导航独立成行，徽章不遮挡导航 */
@@ -793,4 +809,7 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
   /* 选项与表格防溢出 */
   .q-options li { word-break: break-all; }
   .rich table, .ai-report table { display: block; overflow-x: auto; }
+  /* 帮助/设置页表格窄屏可横向滚动，不撑破页面 */
+  .help-doc table, .help-doc .sim-table { display: block; overflow-x: auto; }
+  .settings-grid { grid-template-columns: minmax(0, 1fr); }
 }

@@ -97,6 +97,8 @@ window.RichAsk = (() => {
   // 选中文本后打开右侧对话栏：解释类预设直接发送，自由提问则聚焦输入框
   function openAsk(sel, preset = '') {
     if (!window.NoteChat) return UI.toast('对话栏尚未就绪，请刷新页面', 'error');
+    // 弹窗层级(200)高于对话栏(120)：若从弹窗内提问，先关闭弹窗，否则对话栏被遮罩挡住无法操作
+    document.querySelectorAll('.modal-mask .modal-x').forEach(x => x.click());
     NoteChat.open({
       noteId: sel.noteId,
       selection: sel.text,

@@ -189,6 +189,39 @@ Views.notes = {
       syncSnap();
       afterEdit();
     });
+    // 悬浮批注卡片定位：相对编辑区可视框做像素级钳制，保证左右/上下都不越界被 overflow 裁剪
+    const placeCard = ann => {
+      const card = ann.querySelector('.ai-annotation-card');
+      if (!card) return;
+      const er = editor.getBoundingClientRect();
+      const ar = ann.getBoundingClientRect();
+      const cw = card.offsetWidth || Math.min(520, window.innerWidth - 96);
+      const ch = card.offsetHeight || Math.min(0.58 * window.innerHeight, 320);
+      card.style.right = '';
+      card.style.bottom = '';
+      // 卡片 absolute 定位相对 ann；期望左边与触发标签对齐，再钳制到编辑区内（留 8px 余量）
+      const pad = 8;
+      const minLeft = er.left + pad - ar.left;
+      const maxLeft = Math.max(minLeft, er.right - pad - cw - ar.left);
+      card.style.left = U.clamp(0, minLeft, maxLeft) + 'px';
+      // 默认向下弹出；下方空间不足且上方足够时向上弹出
+      const below = er.bottom - ar.bottom;
+      const above = ar.top - er.top;
+      card.style.top = (below < ch + pad && above > ch + pad)
+        ? -(ch + 6) + 'px'
+        : (ar.height + 6) + 'px';
+    };
+    const placeAllCards = () => editor.querySelectorAll('.ai-annotation').forEach(placeCard);
+    editor.addEventListener('pointerover', e => {
+      const ann = e.target.closest?.('.ai-annotation');
+      if (ann) placeCard(ann);
+    });
+    editor.addEventListener('focusin', e => {
+      const ann = e.target.closest?.('.ai-annotation');
+      if (ann) placeCard(ann);
+    });
+    editor.addEventListener('scroll', placeAllCards);
+    window.addEventListener('resize', placeAllCards);
     titleInput.addEventListener('input', () => { pushUndoSoon(); afterEdit(); });
     titleInput.addEventListener('keydown', e => { if (e.key === 'Enter') editor.focus(); });
     editor.addEventListener('keydown', e => {
@@ -388,6 +421,7 @@ Views.notes = {
     this._cleanup = () => {
       if (autoTimer) clearInterval(autoTimer);
       document.removeEventListener('keydown', onSaveKey);
+      window.removeEventListener('resize', placeAllCards);
     };
 
     // ---------- 右侧笔记助教 ----------

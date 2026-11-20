@@ -77,10 +77,10 @@ Views.dashboard = {
 
       ${mastery.length ? `<div class="section-title">🎯 考点掌握度（按 AI 批改聚合，越低越要优先重练）</div>
       <div class="card">${mastery.map(m => `
-        <div style="display:flex;align-items:center;gap:10px;margin:8px 0">
-          <span class="chip chip-tag" style="min-width:150px;text-align:center">${U.esc(m.tag)}</span>
-          <div class="score-bar ${m.ratio >= 80 ? 'high' : m.ratio < 50 ? 'low' : ''}" style="flex:1"><div style="width:${m.ratio}%"></div></div>
-          <span class="small muted">${m.ratio}%（${m.total} 次）</span>
+        <div style="display:flex;align-items:center;gap:10px;margin:8px 0;flex-wrap:wrap">
+          <span class="chip chip-tag" style="min-width:110px;max-width:100%;text-align:center">${U.esc(m.tag)}</span>
+          <div class="score-bar ${m.ratio >= 80 ? 'high' : m.ratio < 50 ? 'low' : ''}" style="flex:1;min-width:80px"><div style="width:${m.ratio}%"></div></div>
+          <span class="small muted" style="white-space:nowrap">${m.ratio}%（${m.total} 次）</span>
         </div>`).join('')}</div>` : `<div class="section-title">🎯 考点掌握度</div><div class="card muted">暂无数据——做题并让 AI 批改后，这里会按知识点标签统计掌握度</div>`}
 
       <div class="section-title">🕘 最近作答</div>
