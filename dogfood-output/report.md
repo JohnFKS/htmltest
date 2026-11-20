@@ -13,9 +13,9 @@
 |----------|-------|
 | Critical | 0 |
 | High | 0 |
-| Medium | 0 |
+| Medium | 1 |
 | Low | 1 |
-| **Total** | **1** |
+| **Total** | **2** |
 
 已发现并修复 1 个低优先级 UX 问题；其余核心流程均通过，浏览器控制台与页面错误日志为空。
 
@@ -110,5 +110,38 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: min(480px, 40vw); }
 
 修复后连续点击「新建对话」和「历史」均无遮挡，toast 顶部坐标 837.7、对话栏头部底部 112，不再重叠。
 ![修复后](screenshots/17-toast-fixed.png)
+
+---
+
+### ISSUE-002: 折叠侧栏后主内容被挤进 8px 手柄列
+
+| Field | Value |
+|-------|-------|
+| **Severity** | medium |
+| **Category** | functional / layout |
+| **URL** | http://127.0.0.1:8899/#notes |
+
+**Description**
+
+折叠笔记列表后，侧栏由 `display:none` 退出 Grid，但容器仍使用三列模板 `0 8px 1fr`。浏览器自动排列时把 8px 手柄放入第一列、主编辑区放入第二列（仅 8px 宽），导致笔记正文看起来“消失”。右侧批注工具栏折叠时同理。预期折叠后主内容应占满剩余宽度。
+
+**Repro Steps**
+
+1. 打开笔记页，点击笔记列表分栏手柄上的折叠按钮。
+   ![折叠前](screenshots/51-pane-before.png)
+
+2. 折叠后主编辑区宽度从 952px 变成 54px、高度 46px，正文不可见。
+   ![问题复现](screenshots/52-pane-after-expand.png)
+
+**Fix**
+
+折叠时改用两列 Grid：左侧栏折叠为 `8px minmax(0,1fr)`；右侧栏折叠为 `minmax(0,1fr) 8px`。侧栏仍用 `display:none` 隐藏，但不再留下空列参与自动排列。
+
+**Verification**
+
+折叠后笔记编辑区宽度为 1220px、高度 352px；展开后恢复 260px 侧栏 + 952px 编辑区，笔记列表 2 条和正文均完整显示。批注页与刷题页同样验证通过。
+![修复后折叠](screenshots/53-notes-collapsed-fixed.png)
+![修复后展开](screenshots/54-notes-expanded-fixed.png)
+![批注页](screenshots/55-annot-collapsed-fixed.png)
 
 ---

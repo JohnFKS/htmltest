@@ -269,15 +269,15 @@ body.chat-open .toast-wrap { top: auto; bottom: 20px; right: calc(var(--chat-wid
 .notes-layout.pane-side-right, .annot-main.pane-side-right, .quiz-layout.pane-side-right {
   grid-template-columns: minmax(0, 1fr) 8px var(--pane-side-w, 300px);
 }
-.notes-layout.pane-collapsed, .quiz-layout.pane-collapsed {
-  grid-template-columns: 0 8px minmax(0, 1fr);
+/* 折叠时侧栏 display:none 不再占格，因此改为两列，避免主内容被塞进 8px 手柄列 */
+.notes-layout.pane-collapsed, .quiz-layout.pane-collapsed, .annot-main.pane-collapsed {
+  grid-template-columns: 8px minmax(0, 1fr);
 }
 .notes-layout.pane-collapsed.pane-side-right,
 .annot-main.pane-collapsed.pane-side-right,
 .quiz-layout.pane-collapsed.pane-side-right {
-  grid-template-columns: minmax(0, 1fr) 8px 0;
+  grid-template-columns: minmax(0, 1fr) 8px;
 }
-.annot-main.pane-collapsed { grid-template-columns: 0 8px minmax(0, 1fr); }
 .pane-collapsed [data-pane="side"] { display: none; }
 .pane-handle {
   position: relative; min-width: 8px; cursor: col-resize;
