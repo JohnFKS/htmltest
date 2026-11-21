@@ -384,3 +384,38 @@ test('笔记目录：界面结构、自动刷新与折叠样式（源码契约�
   assert.match(js, /class="export-toc"/, '导出 HTML 应含悬浮目录');
   assert.match(js, /scroll-behavior:smooth/, '导出的章节跳转应平滑滚动');
 });
+
+// ---------- AI 助教：多窗口 / 缩小续答 / 选段批注 ----------
+test('note-chat：多窗口并发，每个窗口独立会话与发送状态（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
+  assert.ok(src.includes('const windows = [];'), '应以窗口数组管理多个对话');
+  assert.ok(src.includes('activeId: null, currentNoteId: null, pending: false, compacting: false'), '每个窗口应有独立会话与忙碌状态');
+  assert.match(src, /function openWindow\(opts = \{\}\)/, '应提供新开窗口入口');
+  assert.match(src, /function closeWindow\(w\)/, '应支持单独关闭窗口');
+  assert.ok(src.includes('if (opts.question && opts.autoSend !== false) send(w);'), '新窗口应能独立发送问题');
+  const ask = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
+  assert.match(ask, /NoteChat\.openWindow\(\{/, '右键提问应为每次提问开独立窗口');
+});
+
+test('note-chat：缩小后回答继续并在完成时提示（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
+  assert.match(src, /function toggleMinimize\(w\)/, '应有缩小/展开切换');
+  assert.ok(src.includes("w.pending ? '回答中…'"), '缩小标签头应显示回答中');
+  assert.ok(src.includes("if (w.minimized) UI.toast(`「${s.title || '对话'}」回答已完成`"), '完成后应提示用户');
+  assert.ok(src.includes('if (!w.minimized) windows.forEach(other => {'), '恢复窗口应让其他窗口缩小，避免遮挡');
+  const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  assert.match(css, /\.chat-drawer\.minimized/, '应有缩小态样式');
+  assert.match(css, /--mini-index/, '多个缩小标签应错层叠放');
+});
+
+test('note-chat：AI 回答选段批注（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
+  assert.match(src, /function captureBubbleSelection\(w\)/, '应从回答气泡提取选区');
+  assert.ok(src.includes('range.cloneContents()'), '选段应保留片段 HTML 结构');
+  assert.ok(src.includes('Sanitize.html(holder.innerHTML)'), '选段 HTML 必须消毒');
+  assert.ok(src.includes('data-act="annot-part"'), '消息操作区应有选段批注入口');
+  assert.ok(src.includes("bar.className = 'chat-selection-bar'"), '选中后应出现浮动操作条');
+  assert.match(src, /appendPartToNote\(w, picked\.msgId, picked\.html\)/, '应只把选中片段交给批注写入');
+  const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  assert.match(css, /\.chat-selection-bar/, '浮动操作条应有样式');
+});

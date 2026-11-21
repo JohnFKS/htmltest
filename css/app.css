@@ -697,6 +697,22 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
   pointer-events: none;
 }
 .chat-drawer.open { transform: none; pointer-events: auto; }
+.chat-drawer-extra {
+  top: calc(var(--topbar-h) + 12px); right: 12px; bottom: 12px;
+  border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden;
+}
+/* 缩小态：只留标题条，生成任务不中断；多个缩小窗口纵向叠放，点击即展开 */
+.chat-drawer.minimized {
+  top: auto; bottom: calc(12px + var(--mini-index, 0) * 52px); right: 12px;
+  width: min(300px, calc(100vw - 24px)); height: 44px; border-radius: 10px; overflow: hidden;
+}
+.chat-drawer.minimized .chat-body, .chat-drawer.minimized .chat-resizer { display: none; }
+.chat-drawer.minimized .chat-head { height: 100%; border-bottom: none; padding: 4px 8px 4px 12px; cursor: pointer; }
+.chat-drawer.minimized .chat-head-icon { width: 26px; height: 26px; flex-basis: 26px; font-size: 14px; }
+.chat-drawer.minimized .chat-head-ops button:not([data-act="minimize"]):not([data-act="close"]) { display: none; }
+.chat-drawer.minimized .chat-head-sub { color: var(--accent); }
+.chat-drawer.is-working .chat-head-icon { background: var(--accent); }
+.chat-drawer.minimized.is-working .chat-head-icon { animation: chatPulse 1s infinite alternate; }
 .chat-resizer {
   position: absolute; left: -5px; top: 0; bottom: 0; width: 10px; z-index: 2;
   cursor: col-resize; touch-action: none;
@@ -829,6 +845,19 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
   font-size: 11.5px; cursor: pointer; font-family: var(--font);
 }
 .chat-msg-ops button:hover { color: var(--primary); }
+.chat-msg-ops [data-act="annot-part"] { color: var(--accent); }
+.chat-msg-ops [data-act="annot-part"]:hover { color: var(--accent); text-decoration: underline; }
+/* 选中 AI 回答片段后出现的浮动操作条 */
+.chat-selection-bar {
+  position: fixed; z-index: 142; display: flex; align-items: center; gap: 10px;
+  padding: 5px 8px 5px 12px; border: 1px solid var(--line-2); border-radius: 8px;
+  background: var(--surface); box-shadow: var(--shadow-lg); font-size: 12px; color: var(--ink-2);
+}
+.chat-selection-bar button {
+  padding: 3px 9px; border: none; border-radius: 5px; cursor: pointer;
+  background: var(--accent); color: #fff; font-size: 12px; font-family: var(--font);
+}
+.chat-selection-bar button:hover { background: #a53f22; }
 .chat-typing { display: flex; width: auto; align-items: center; gap: 4px; padding: 13px 14px; }
 .chat-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: chatPulse 1s infinite alternate; }
 .chat-typing i:nth-child(2) { animation-delay: .2s; }
