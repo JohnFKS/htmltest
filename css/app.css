@@ -424,6 +424,69 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 .rich sup, .rich sub { font-size: .76em; line-height: 0; }
 .rich a { color: var(--primary); text-underline-offset: 2px; }
 .rich p { min-height: 1em; }
+.rich h1, .rich h2, .rich h3 { scroll-margin-top: 12px; border-radius: 4px; }
+.rich .toc-flash { animation: toc-flash 1.1s ease; }
+@keyframes toc-flash {
+  0%, 35% { background: rgba(188, 75, 42, .12); box-shadow: 0 0 0 6px rgba(188, 75, 42, .12); }
+  100% { background: transparent; box-shadow: none; }
+}
+
+/* 悬浮目录：随当前笔记标题自动生成，可折叠；编辑区内滚动不遮挡正文操作 */
+.note-editor-body { position: relative; flex: 1; min-height: 0; display: flex; }
+.note-editor-body > .editor-area { flex: 1; min-width: 0; }
+.note-scroll-progress {
+  position: absolute; top: 0; left: 0; height: 3px; width: 0; z-index: 9;
+  background: var(--accent); border-radius: 0 3px 3px 0; pointer-events: none;
+  transition: width .1s linear;
+}
+.note-toc {
+  position: absolute; top: 14px; right: 14px; z-index: 8;
+  display: flex; flex-direction: column; width: 232px; max-height: calc(100% - 28px);
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); overflow: hidden; opacity: .94;
+  transition: opacity .15s, width .15s, height .15s;
+}
+.note-toc:hover, .note-toc:focus-within { opacity: 1; }
+.note-toc-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 7px 9px 7px 12px; border-bottom: 1px solid var(--line); flex: 0 0 auto;
+}
+.note-toc-title { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+.note-toc-title em { font-style: normal; color: var(--ink-3); font-weight: 400; margin-left: 3px; }
+.note-toc-fold-btn {
+  width: 24px; height: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 6px; background: transparent; color: var(--ink-3); cursor: pointer;
+}
+.note-toc-fold-btn:hover { background: var(--surface-2); color: var(--primary); }
+.note-toc-body { display: flex; flex-direction: column; min-height: 0; }
+.note-toc-list { overflow-y: auto; padding: 6px; min-height: 0; }
+.note-toc-item {
+  display: block; width: 100%; text-align: left; padding: 4px 6px; border: none; border-left: 2px solid transparent;
+  border-radius: 4px; background: none; color: var(--ink-2); font-size: 12.5px; font-family: var(--font);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5;
+}
+.note-toc-item span { display: block; overflow: hidden; text-overflow: ellipsis; }
+.note-toc-item:hover { background: var(--surface-2); color: var(--ink); }
+.note-toc-item.active { background: var(--primary-soft); border-left-color: var(--primary); color: var(--primary); font-weight: 600; }
+.note-toc-item.lv1 { font-weight: 600; }
+.note-toc-item.lv2 { padding-left: 14px; }
+.note-toc-item.lv3 { padding-left: 24px; font-size: 12px; }
+.note-toc-empty { padding: 12px 8px; text-align: center; color: var(--ink-3); font-size: 12px; line-height: 1.7; }
+.note-toc-foot {
+  display: flex; align-items: center; gap: 2px; padding: 5px 6px; border-top: 1px solid var(--line);
+  background: var(--surface-2); flex: 0 0 auto;
+}
+.note-toc-foot button {
+  flex: 1; padding: 2px 0; border: none; border-radius: 4px; background: none; cursor: pointer;
+  color: var(--ink-3); font-size: 11px; font-family: var(--font); white-space: nowrap;
+}
+.note-toc-foot button:hover { background: var(--primary-soft); color: var(--primary); }
+.note-toc.collapsed { width: 38px; height: 38px; }
+.note-toc.collapsed .note-toc-head { padding: 0; border-bottom: none; height: 100%; }
+.note-toc.collapsed .note-toc-title, .note-toc.collapsed .note-toc-body { display: none; }
+.note-toc.collapsed .note-toc-fold-btn { width: 100%; height: 100%; }
+.note-toc.collapsed .note-toc-fold-btn .ico { transform: rotate(-90deg); }
+@media (max-width: 760px) { .note-toc { width: 188px; right: 8px; top: 8px; } }
 
 /* ============================================================
    截图批注

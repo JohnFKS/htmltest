@@ -26,12 +26,30 @@ Views.notes = {
                 <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">${Icon.svg('book', 14)} 导入 PDF</button>
                 <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
                 <button class="btn btn-ghost btn-sm" id="note-chat-open" title="打开右侧笔记助教：多轮提问与历史对话">${Icon.svg('message', 14)} 笔记助教</button>
+                <button class="btn btn-ghost btn-sm" id="note-toc-toggle" title="显示/隐藏悬浮目录（自动提取 H1-H3 标题）">${Icon.svg('list', 14)} 目录</button>
                 <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">${Icon.svg('download', 14)} 导出 HTML</button>
               </div>
             </div>
             <div class="editor-toolbar" id="editor-toolbar"></div>
           </div>
-          <div class="editor-area rich" id="editor-area" contenteditable="true" data-ph="开始书写…支持表格、折叠块、公式 $E=mc^2$、代码块，可直接 Ctrl+V 粘贴图片或 Markdown"></div>
+          <div class="note-editor-body" id="note-editor-body">
+            <div class="note-scroll-progress" id="note-scroll-progress"></div>
+            <div class="editor-area rich" id="editor-area" contenteditable="true" data-ph="开始书写…支持表格、折叠块、公式 $E=mc^2$、代码块，可直接 Ctrl+V 粘贴图片或 Markdown"></div>
+            <aside class="note-toc" id="note-toc" aria-label="笔记目录">
+              <div class="note-toc-head">
+                <span class="note-toc-title">目录 <em id="note-toc-count">0</em></span>
+                <button type="button" class="note-toc-fold-btn" id="note-toc-fold-btn" title="折叠目录" aria-label="折叠目录">${Icon.svg('details', 15)}</button>
+              </div>
+              <div class="note-toc-body">
+                <div class="note-toc-list" id="note-toc-list"></div>
+                <div class="note-toc-foot">
+                  <button type="button" data-act="top" title="回到顶部">回到顶部</button>
+                  <button type="button" data-act="fold" title="展开/收起全部折叠块">展开折叠</button>
+                  <button type="button" data-act="copy" title="复制章节大纲">复制大纲</button>
+                </div>
+              </div>
+            </aside>
+          </div>
           <div class="muted" style="margin-top:8px" id="note-status"></div>
         </div>
       </div>`;
@@ -44,6 +62,94 @@ Views.notes = {
     const titleInput = container.querySelector('#note-title');
     this._search = '';
     this.currentId = this.currentId && Store.find('notes', this.currentId) ? this.currentId : (notes[0]?.id || null);
+
+    // ---------- 悬浮目录：自动提取 H1-H3，滚动高亮，点击跳转，折叠状态本地记忆 ----------
+    const tocEl = container.querySelector('#note-toc');
+    const tocListEl = container.querySelector('#note-toc-list');
+    const tocCountEl = container.querySelector('#note-toc-count');
+    const tocToggleBtn = container.querySelector('#note-toc-toggle');
+    const foldBtn = tocEl.querySelector('[data-act="fold"]');
+    const progressEl = container.querySelector('#note-scroll-progress');
+    const TOC_KEY = 'note.toc.collapsed';
+    let tocTargets = [], tocActive = -1, tocCollapsed = false;
+    try { tocCollapsed = localStorage.getItem(TOC_KEY) === '1'; } catch (e) { /* 隐私模式忽略 */ }
+
+    const setTocActive = i => {
+      if (i === tocActive) return;
+      tocListEl.querySelectorAll('.note-toc-item').forEach((el, j) => el.classList.toggle('active', j === i));
+      tocActive = i;
+      tocListEl.querySelector('.note-toc-item.active')?.scrollIntoView({ block: 'nearest' });
+    };
+    const updateTocActive = () => {
+      if (!tocTargets.length) return setTocActive(-1);
+      // 滚到底部时最后一个标题可能仍差几十像素才越过判定线，直接视为当前章节
+      if (editor.scrollTop + editor.clientHeight >= editor.scrollHeight - 2) return setTocActive(tocTargets.length - 1);
+      const top = editor.getBoundingClientRect().top + 48;
+      let idx = 0;
+      tocTargets.forEach((h, i) => { if (h.getBoundingClientRect().top <= top) idx = i; });
+      setTocActive(idx);
+    };
+    const updateProgress = () => {
+      const range = editor.scrollHeight - editor.clientHeight;
+      progressEl.style.width = (range > 0 ? U.clamp(editor.scrollTop / range, 0, 1) * 100 : 0).toFixed(1) + '%';
+    };
+    const refreshToc = () => {
+      tocTargets = [...editor.querySelectorAll('h1, h2, h3')].filter(h => !h.closest('.ai-annotation'));
+      tocActive = -1;
+      tocCountEl.textContent = String(tocTargets.length);
+      tocListEl.innerHTML = tocTargets.length ? tocTargets.map((h, i) => {
+        const text = (h.textContent || '').trim() || '未命名标题';
+        return `<button type="button" class="note-toc-item lv${h.tagName[1]}" data-i="${i}" title="${U.esc(text)}"><span>${U.esc(text)}</span></button>`;
+      }).join('') : '<div class="note-toc-empty">暂无标题<br>用工具栏 H1 / H2 / H3 添加</div>';
+      tocListEl.querySelectorAll('.note-toc-item').forEach(btn => {
+        btn.onclick = () => {
+          const i = +btn.dataset.i, target = tocTargets[i];
+          if (!target) return;
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          setTocActive(i);
+          target.classList.add('toc-flash');
+          setTimeout(() => target.classList.remove('toc-flash'), 1100);
+        };
+      });
+      const blocks = [...editor.querySelectorAll('details')];
+      foldBtn.textContent = blocks.length && blocks.every(d => d.open) ? '收起折叠' : '展开折叠';
+      updateTocActive();
+      updateProgress();
+    };
+    const setTocCollapsed = collapsed => {
+      tocCollapsed = collapsed;
+      tocEl.classList.toggle('collapsed', collapsed);
+      tocToggleBtn.classList.toggle('on', !collapsed);
+      foldBtn.title = collapsed ? '展开目录' : '折叠目录';
+      try { localStorage.setItem(TOC_KEY, collapsed ? '1' : '0'); } catch (e) { /* 忽略 */ }
+      if (!collapsed) refreshToc();
+    };
+    tocToggleBtn.onclick = () => setTocCollapsed(!tocCollapsed);
+    tocEl.querySelector('#note-toc-fold-btn').onclick = () => setTocCollapsed(true);
+    tocEl.querySelectorAll('.note-toc-foot button').forEach(btn => {
+      btn.onclick = () => {
+        if (btn.dataset.act === 'top') { editor.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+        if (btn.dataset.act === 'fold') {
+          const blocks = [...editor.querySelectorAll('details')];
+          const open = blocks.some(d => !d.open);
+          blocks.forEach(d => { d.open = open; });
+          btn.textContent = open ? '收起折叠' : '展开折叠';
+          afterEdit();
+          return;
+        }
+        if (btn.dataset.act === 'copy') {
+          const text = tocTargets.map(h => `${'  '.repeat(U.clamp(+h.tagName[1] - 1, 0, 2))}${(h.textContent || '').trim()}`).join('\n');
+          if (!text) return UI.toast('当前笔记没有标题', 'warn');
+          try { Promise.resolve(U.copyText(text)).then(() => UI.toast('大纲已复制', 'success')); }
+          catch (e) { UI.toast('复制失败', 'warn'); }
+        }
+      };
+    });
+    editor.addEventListener('scroll', () => { updateTocActive(); updateProgress(); });
+    const tocObserver = new MutationObserver(U.debounce(refreshToc, 200));
+    tocObserver.observe(editor, { childList: true, subtree: true, characterData: true });
+    setTocCollapsed(tocCollapsed);
+    this._toc = { refresh: refreshToc, update: updateProgress };
 
     // ---------- 保存状态 / 版本历史 ----------
     const notesCfg = () => Store.config.notes || { autoSaveSec: 60, maxVersions: 20 };
@@ -121,6 +227,8 @@ Views.notes = {
       if (!n) return;
       edEl.innerHTML = n.content || '';
       tEl.value = n.title || '';
+      edEl.scrollTop = 0;
+      refreshToc();
       // 切换笔记时清空撤销历史，同步基线快照
       undoStack.length = 0; redoStack.length = 0; lastSnap = takeSnap();
       this.updateStatus();
@@ -479,6 +587,7 @@ Views.notes = {
       if (autoTimer) clearInterval(autoTimer);
       document.removeEventListener('keydown', onSaveKey);
       window.removeEventListener('resize', placeAllCards);
+      tocObserver.disconnect();
       toolbarCleanup?.();
     };
 
@@ -488,20 +597,31 @@ Views.notes = {
       else UI.toast('对话栏尚未就绪，请刷新页面', 'error');
     };
 
-    // ---------- 导出独立 HTML ----------
+    // ---------- 导出独立 HTML（含可折叠目录与章节锚点） ----------
     container.querySelector('#note-export').onclick = () => {
       const n = Store.find('notes', this.currentId);
       if (!n) return UI.toast('请先选择笔记', 'warn');
+      const safe = Sanitize.html(n.content);
+      const entries = this.outlineFromHtml(safe);
+      const anchored = this.withOutlineIds(safe);
+      const tocHtml = entries.length
+        ? `<details class="export-toc" open><summary>目录（${entries.length}）</summary><nav>${this.outlineNavHtml(entries)}</nav></details>`
+        : '';
       const html = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><title>${U.esc(n.title)}</title>
-<style>body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;max-width:820px;margin:40px auto;padding:0 24px;line-height:1.7;color:#26231d}
-h1{border-bottom:2px solid #e6e1d3;padding-bottom:8px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 12px}
+<style>html{scroll-behavior:smooth}body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;max-width:820px;margin:40px auto;padding:0 24px;line-height:1.7;color:#26231d}
+h1{border-bottom:2px solid #e6e1d3;padding-bottom:8px}h1,h2,h3{scroll-margin-top:16px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 12px}
 blockquote{border-left:3px solid #ccc;margin:10px 0;padding:8px 16px;color:#555;background:#f9f8f4}pre{background:#2a2721;color:#eee;padding:12px 16px;border-radius:8px;overflow-x:auto}
 code{font-family:Consolas,monospace;background:#f4f2ec;padding:1px 5px;border-radius:4px}pre code{background:none;padding:0}img{max-width:100%;border-radius:8px}
 a{color:#2d6a4f}mark{padding:1px 2px;border-radius:3px}del,s{color:#8d8677}sup,sub{font-size:.78em}
 .todo-list{list-style:none;padding-left:6px}.todo-list li{display:flex;align-items:baseline;gap:8px;margin:4px 0}
 details{border:1px solid #e6e1d3;border-radius:7px;padding:8px 14px;margin:10px 0}summary{cursor:pointer;font-weight:600}
-hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}</style></head>
-<body><h1>${U.esc(n.title)}</h1>${Sanitize.html(n.content)}</body></html>`;
+hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
+.export-toc{position:fixed;right:18px;top:18px;z-index:9;width:230px;max-height:70vh;overflow:auto;background:#fffef9;box-shadow:0 6px 28px rgba(38,35,29,.16);padding:8px 12px;font-size:13px}
+.export-toc summary{color:#2d6a4f;font-weight:700}.export-toc nav{display:flex;flex-direction:column;margin-top:6px;padding-top:6px;border-top:1px solid #e6e1d3}
+.export-toc nav a{display:block;padding:3px 6px;border-radius:5px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#5c564a}
+.export-toc nav a:hover{background:#e7f0eb;color:#2d6a4f}.export-toc .toc-lv2{padding-left:16px}.export-toc .toc-lv3{padding-left:28px;font-size:12.5px}
+@media(max-width:760px){.export-toc{position:static;width:auto;margin:0 0 18px}}</style></head>
+<body>${tocHtml}<h1>${U.esc(n.title)}</h1>${anchored.html}</body></html>`;
       U.download(`${n.title || '笔记'}.html`, html, 'text/html');
     };
 
@@ -534,7 +654,38 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}</style></head>
     const latestLabel = latest
       ? `最近版本 ${U.fmt(latest.createdAt)}（${latest.source === 'manual' ? '手动' : latest.source === 'restore' ? '恢复' : '自动'}）`
       : '尚无历史版本';
-    el.textContent = `${info.dirty ? '● 草稿未存为版本' : '✓ 已保存版本'} · 草稿 ${U.fmt(n?.updatedAt || n?.createdAt)} · ${latestLabel} · ${versions.length} 版 · ${cfg.autoSaveSec ? `自动 ${cfg.autoSaveSec}s` : '自动关闭'}`;
+    const stats = this.wordStats(document.getElementById('editor-area')?.innerHTML ?? n?.content ?? '');
+    const countLabel = stats.chars
+      ? `${stats.chars} 字${stats.words ? ` / ${stats.words} 词` : ''} · 约 ${stats.minutes} 分钟`
+      : '空笔记';
+    el.textContent = `${info.dirty ? '● 草稿未存为版本' : '✓ 已保存版本'} · 草稿 ${U.fmt(n?.updatedAt || n?.createdAt)} · ${latestLabel} · ${versions.length} 版 · ${countLabel} · ${cfg.autoSaveSec ? `自动 ${cfg.autoSaveSec}s` : '自动关闭'}`;
+  },
+
+  // 纯文本统计：中文按字符、英文按词；阅读速度按 400 字/分钟估算
+  wordStats(html = '') {
+    const text = String(html).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ');
+    const chars = text.replace(/\s/g, '').length;
+    const words = (text.match(/[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g) || []).length;
+    return { chars, words, minutes: chars ? Math.max(1, Math.round(chars / 400)) : 0 };
+  },
+
+  // 导出用的纯字符串大纲工具（输入已消毒的 HTML，不写回笔记正文）
+  outlineFromHtml(html = '') {
+    const entries = [];
+    String(html).replace(/<h([123])(?:\s[^>]*)?>([\s\S]*?)<\/h\1>/gi, (m, level, inner) => {
+      entries.push({ level: +level, text: (U.stripHtml(inner) || '未命名标题').trim() });
+      return m;
+    });
+    return entries;
+  },
+
+  withOutlineIds(html = '') {
+    let i = 0;
+    return { html: String(html).replace(/<h([123])(?:\s[^>]*)?>/gi, m => m.slice(0, -1) + ` id="sec-${i++}">`), count: i };
+  },
+
+  outlineNavHtml(entries) {
+    return entries.map((e, i) => `<a class="toc-lv${e.level}" href="#sec-${i}">${U.esc(e.text)}</a>`).join('');
   },
 
   buildToolbar(bar, editor, save, undoApi = {}) {

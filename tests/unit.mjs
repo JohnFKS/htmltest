@@ -336,3 +336,51 @@ test('UI CRUD：三本标签编辑 + 模板字段编辑弹窗', () => {
   assert.match(tpl, /function editTemplate|editTemplate\(t, container\)/, '应有编辑弹窗方法');
   assert.ok(tpl.includes("split(/[,，;；]/)"), '列表字段应支持逗号与分号分隔');
 });
+
+// ---------- 悬浮目录与阅读辅助 ----------
+load('js/views/notes.js');
+
+test('笔记目录：从消毒 HTML 提取 H1-H3 标题层级', () => {
+  const N = globalThis.Views.notes;
+  assert.deepEqual(N.outlineFromHtml('<h2>第一章</h2><p>正文</p><h3><b>小节</b></h3>'), [
+    { level: 2, text: '第一章' },
+    { level: 3, text: '小节' },
+  ]);
+  assert.deepEqual(N.outlineFromHtml('<p>没有标题</p>'), []);
+});
+
+test('笔记目录：导出 HTML 注入章节锚点与可折叠目录链接', () => {
+  const N = globalThis.Views.notes;
+  const entries = N.outlineFromHtml('<h2>第一章</h2><h3>小节</h3>');
+  const anchored = N.withOutlineIds('<h2>第一章</h2><h3>小节</h3>');
+  assert.equal(anchored.count, 2);
+  assert.match(anchored.html, /<h2 id="sec-0">/);
+  assert.match(anchored.html, /<h3 id="sec-1">/);
+  const nav = N.outlineNavHtml(entries);
+  assert.match(nav, /href="#sec-0"/);
+  assert.match(nav, /class="toc-lv3"/);
+  assert.doesNotMatch(N.outlineNavHtml([{ level: 1, text: '<img src=x>' }]), /<img/, '目录文本必须转义');
+});
+
+test('笔记状态栏：字数 / 词数 / 阅读时间统计', () => {
+  const s = globalThis.Views.notes.wordStats('<h2>标题</h2><p>hello world 你好</p>');
+  assert.equal(s.chars, 14);
+  assert.equal(s.words, 2);
+  assert.equal(s.minutes, 1);
+  assert.deepEqual(globalThis.Views.notes.wordStats('<p></p>'), { chars: 0, words: 0, minutes: 0 });
+});
+
+test('笔记目录：界面结构、自动刷新与折叠样式（源码契约）', () => {
+  const js = readFileSync(path.join(ROOT, 'js/views/notes.js'), 'utf8');
+  for (const id of ['note-toc', 'note-toc-list', 'note-toc-toggle', 'note-scroll-progress']) {
+    assert.ok(js.includes(`id="${id}"`), `缺少界面元素 ${id}`);
+  }
+  assert.match(js, /new MutationObserver\(/, '目录应随正文结构变化自动刷新');
+  assert.match(js, /scrollIntoView\(\{ behavior: 'smooth'/, '点击目录应平滑跳转');
+  assert.match(js, /localStorage\.setItem\(TOC_KEY/, '折叠状态应本地记忆');
+  const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  assert.match(css, /\.note-toc\.collapsed/, '应有折叠态样式');
+  assert.match(css, /\.note-toc-item\.active/, '应有当前章节高亮样式');
+  assert.match(js, /class="export-toc"/, '导出 HTML 应含悬浮目录');
+  assert.match(js, /scroll-behavior:smooth/, '导出的章节跳转应平滑滚动');
+});
