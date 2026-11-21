@@ -272,6 +272,106 @@ window.RichAsk = (() => {
     return n;
   }
 
+  // ---------- Agent 增删改查执行器（create/update/delete，全部经确认弹窗） ----------
+  const UPDATABLE_FIELDS = {
+    note: ['title'], bank: ['name', 'questions'], card: ['front', 'back', 'tags'], entry: ['tags'],
+    template: ['name', 'essence', 'steps', 'signals', 'disguises', 'pitfalls'], annot: ['title'], session: ['title'], record: ['tags'],
+  };
+  function normQuestions(list) {
+    return (Array.isArray(list) ? list : []).filter(q => q && String(q.stem || '').trim()).slice(0, 100)
+      .map(q => ({
+        id: U.uid('q'), number: String(q.number ?? '').slice(0, 20), chapter: String(q.chapter ?? '').slice(0, 40),
+        stem: String(q.stem || '').trim().slice(0, 2000),
+        options: Array.isArray(q.options) ? q.options.map(o => String(o).slice(0, 200)).slice(0, 10) : [],
+        answer: String(q.answer ?? '').trim().slice(0, 1000), analysis: String(q.analysis ?? '').trim().slice(0, 4000),
+        knowledge: String(q.knowledge ?? '').trim().slice(0, 200),
+      }));
+  }
+  function fieldsPreview(fields) {
+    return Object.entries(fields || {}).map(([k, v]) => {
+      const s = Array.isArray(v) ? JSON.stringify(v) : String(v);
+      return `${k}: ${s.slice(0, 60)}${s.length > 60 ? '…' : ''}`;
+    }).join('；');
+  }
+
+  async function executeAgentOp(op = {}) {
+    if (!Store.aiLive()) return { ok: false, error: '演示模式不支持内容增删改，请先在设置里配置真实 AI' };
+    const kind = String(op.op || '');
+    if (kind === 'create_note') {
+      const title = String(op.title || '').trim().slice(0, 80) || '未命名笔记';
+      const content = String(op.html || '').trim() || '<p></p>';
+      if (!await UI.confirm(`AI 请求：新建笔记《${title}》。\n理由：${op.reason || ''}\n内容预览：${U.stripHtml(content).replace(/\s+/g, ' ').slice(0, 90)}…\n确定创建？`, { confirmLabel: '允许创建' })) {
+        return { ok: false, error: '用户取消了这次操作' };
+      }
+      const n = Store.insert('notes', { id: U.uid('note'), title, content, createdAt: U.now(), updatedAt: U.now() });
+      return { ok: true, id: n.id, message: `已创建笔记《${title}》` };
+    }
+    if (kind === 'create_card') {
+      const front = String(op.front || '').trim();
+      const back = String(op.back || '').trim();
+      if (!front || !back) return { ok: false, error: '卡片的 front 与 back 均不能为空' };
+      const tags = Array.isArray(op.tags) ? op.tags.filter(Boolean).slice(0, 8) : [];
+      if (!await UI.confirm(`AI 请求：新建复习卡片。\n理由：${op.reason || ''}\n正面：${front.slice(0, 80)}\n背面：${back.slice(0, 80)}\n确定创建？`, { confirmLabel: '允许创建' })) {
+        return { ok: false, error: '用户取消了这次操作' };
+      }
+      const c = Store.insert('cards', { id: U.uid('card'), front, back, tags, srs: { ease: 2.5, interval: 0, reps: 0, lapses: 0 }, createdAt: U.now(), updatedAt: U.now() });
+      return { ok: true, id: c.id, message: `已创建复习卡片（正面：${front.slice(0, 30)}）` };
+    }
+    if (kind === 'create_bank') {
+      const name = String(op.name || '').trim().slice(0, 60);
+      if (!name) return { ok: false, error: '题库名称不能为空' };
+      const questions = normQuestions(op.questions);
+      if (!await UI.confirm(`AI 请求：新建题库《${name}》（${questions.length} 道题）。\n理由：${op.reason || ''}\n${questions.length ? '首题：' + questions[0].stem.slice(0, 80) : '（空题库，稍后可在刷题页添加题目）'}\n确定创建？`, { confirmLabel: '允许创建' })) {
+        return { ok: false, error: '用户取消了这次操作' };
+      }
+      const b = Store.insert('banks', { id: U.uid('bank'), name, questions, createdAt: U.now(), updatedAt: U.now() });
+      return { ok: true, id: b.id, message: `已创建题库《${name}》（${questions.length} 道题）` };
+    }
+    if (kind === 'update_content') {
+      const kindKey = String(op.kind || '');
+      const coll = NoteRefs.KINDS[kindKey]?.coll;
+      if (!coll) return { ok: false, error: `不支持的内容类型：${kindKey}` };
+      const item = Store.find(coll, op.id);
+      if (!item) return { ok: false, error: `目标不存在（${kindKey} ${op.id}）` };
+      const allowed = UPDATABLE_FIELDS[kindKey] || [];
+      const fields = {};
+      for (const [k, v] of Object.entries(op.fields || {})) {
+        if (!allowed.includes(k)) continue;
+        if (k === 'questions') fields.questions = normQuestions(v);
+        else if (Array.isArray(v)) fields[k] = v.map(x => String(x).slice(0, 60)).filter(Boolean).slice(0, 12);
+        else fields[k] = k === 'essence' ? String(v ?? '').slice(0, 4000) : String(v ?? '').slice(0, 200);
+      }
+      if (!Object.keys(fields).length) return { ok: false, error: `没有可更新的字段（${kindKey} 仅允许：${allowed.join('、')}）` };
+      if (!await UI.confirm(`AI 请求：更新${NoteRefs.KINDS[kindKey].label}「${NoteRefs.metaOf(kindKey, item)?.title || item.id}」。\n理由：${op.reason || ''}\n变更：${fieldsPreview(fields)}\n确定修改？`, { confirmLabel: '允许修改' })) {
+        return { ok: false, error: '用户取消了这次操作' };
+      }
+      Store.update(coll, item.id, fields);
+      return { ok: true, id: item.id, message: `已更新${NoteRefs.KINDS[kindKey].label}（${Object.keys(fields).join('、')}）` };
+    }
+    if (kind === 'delete_content') {
+      const kindKey = String(op.kind || '');
+      const cfg = NoteRefs.KINDS[kindKey];
+      if (!cfg) return { ok: false, error: `不支持的内容类型：${kindKey}` };
+      const item = Store.find(cfg.coll, op.id);
+      if (!item) return { ok: false, error: `目标不存在（${kindKey} ${op.id}）` };
+      const meta = NoteRefs.metaOf(kindKey, item);
+      const extra = kindKey === 'bank' ? `（含 ${(item.questions || []).length} 道题）` : '';
+      if (!await UI.confirm(`AI 请求：删除${cfg.label}「${meta?.title || item.id}」${extra}。\n理由：${op.reason || ''}\n${kindKey === 'note' ? '删除前会自动存版本快照，可在「历史」恢复' : '⚠ 删除后无法从「历史」恢复（仅剩数据备份）'}\n确定删除？`, { danger: true, confirmLabel: '允许删除' })) {
+        return { ok: false, error: '用户取消了这次操作' };
+      }
+      if (kindKey === 'note') snapshotVersion(item);
+      Store.remove(cfg.coll, item.id);
+      if (kindKey === 'note' && Views.notes?.currentId === item.id) {
+        const ed = document.getElementById('editor-area'), ti = document.getElementById('note-title');
+        if (ed) ed.innerHTML = '<p></p>';
+        if (ti) ti.value = '';
+        Views.notes.currentId = null;
+      }
+      return { ok: true, id: item.id, message: `已删除${cfg.label}「${meta?.title || item.id}」${extra}${kindKey === 'note' ? '（删除前已存版本快照，可在「历史」恢复）' : ''}` };
+    }
+    return { ok: false, error: `未知操作：${kind}` };
+  }
+
   async function executeNoteEdit({ action, html, title, blockIndex, blockFrom, blockTo, styleType, colorValue, reason, noteId }) {
     if (!Store.aiLive()) return { ok: false, error: '演示模式不支持编辑笔记，请先在设置里配置真实 AI' };
     // 目标笔记：不传 noteId 时编辑当前打开的笔记；传入 noteId 可编辑任意笔记（跨笔记编辑）
@@ -393,5 +493,5 @@ window.RichAsk = (() => {
     return { ok: true, message: `《${note.title}》${label}完成${action === 'style_blocks' ? `（${styleCount} 个块）` : ''}（该笔记未在编辑器打开，已直接保存），已存版本快照` };
   }
 
-  return { openAsk, appendToNote, noteBlocks, readBlockRange, executeNoteEdit };
+  return { openAsk, appendToNote, noteBlocks, readBlockRange, executeNoteEdit, executeAgentOp };
 })();

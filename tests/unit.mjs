@@ -293,5 +293,27 @@ test('prompts：agent 提示词为成熟风格的能力清单 + 边界声明 + �
   assert.match(src, /结果以工具返回为准/, '应以工具结果为准');
   assert.match(src, /绝不编造编辑结果/, '应有反幻觉规则');
   assert.match(src, /超出能力的事（没有对应工具/, '应显式声明能力边界');
-  assert.match(src, /新建或删除笔记、增删改题库与题目/, '边界应列明无工具的操作');
+  assert.match(src, /批改作答与评分、管理批注的截图绘制层/, '边界应列明无工具的操作（CRUD 已纳入能力）');
+});
+
+test('provider：CRUD 工具集（create/update/delete）仅编辑模式提供并分发 onCrud', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
+  assert.match(src, /NOTE_CRUD_TOOLS/, '应有 CRUD 工具数组');
+  for (const t of ['create_note', 'create_card', 'create_bank', 'update_content', 'delete_content']) {
+    assert.ok(src.includes(`name: '${t}'`), `缺少工具 ${t}`);
+  }
+  assert.match(src, /\.\.\.NOTE_CRUD_TOOLS/, 'CRUD 工具应并入编辑模式工具集');
+  assert.match(src, /await toolResult\(call, onToolCall, onRead, onCrud\)/, 'toolResult 应接收 onCrud');
+  assert.match(src, /onCrud = null \}\)/, 'ctxChat 应有 onCrud 参数');
+  assert.match(src, /编辑模式未开启，无法增删改内容/, '无执行器时 CRUD 工具应明确报错');
+});
+
+test('rich-ask：executeAgentOp 增删改查执行器（白名单字段/笔记删除前快照/确认弹窗）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
+  assert.match(src, /async function executeAgentOp\(op = \{\}\)/, '应有 CRUD 执行器');
+  assert.match(src, /UPDATABLE_FIELDS = \{/, '应有按类型的字段白名单');
+  assert.match(src, /executeAgentOp \}/, 'executeAgentOp 应导出');
+  assert.match(src, /if \(kindKey === 'note'\) snapshotVersion\(item\);/, '笔记删除前应存版本快照');
+  assert.match(src, /confirmLabel: '允许删除'/, '删除确认按钮应区分文案');
+  assert.match(src, /function normQuestions/, '题库题目应归一化校验');
 });

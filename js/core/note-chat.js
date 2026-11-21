@@ -552,6 +552,7 @@ window.NoteChat = (() => {
           refsText, globalDigest, onRead,
           noteId: note?.id || '',
           onToolCall: RichAsk.executeNoteEdit,
+          onCrud: RichAsk.executeAgentOp,
         })
         : await AI.ctxChat({
           noteTitle: s.noteTitle || note?.title || '当前笔记',

@@ -361,6 +361,103 @@ window.AI = (() => {
       },
     },
   ];
+  // 增删改查工具：创建/元数据修改/删除（仅编辑模式提供，全部经确认弹窗；删除笔记前自动存版本快照）
+  const NOTE_CRUD_TOOLS = [
+    {
+      type: 'function',
+      function: {
+        name: 'create_note',
+        description: '新建一篇笔记。学生要求"整理成新笔记/单独记一篇"等时调用。',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: '新笔记标题（≤80 字）' },
+            html: { type: 'string', description: '笔记正文（受控 HTML，规则同 edit_note 的 html）' },
+            reason: { type: 'string', description: '一句话说明为什么创建' },
+          },
+          required: ['title', 'html', 'reason'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'create_card',
+        description: '新建一张复习卡片（正面问题/背面答案，进复习页的间隔重复队列）。',
+        parameters: {
+          type: 'object',
+          properties: {
+            front: { type: 'string', description: '卡片正面（问题），≤200 字' },
+            back: { type: 'string', description: '卡片背面（答案），≤500 字' },
+            tags: { type: 'array', items: { type: 'string' }, description: '可选：标签数组' },
+            reason: { type: 'string', description: '一句话说明为什么创建' },
+          },
+          required: ['front', 'back', 'reason'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'create_bank',
+        description: '新建题库，可同时带题目。学生要求"把这部分整理成题库/出几道题"等时调用。',
+        parameters: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: '题库名称' },
+            questions: {
+              type: 'array',
+              description: '可选：题目数组，每项 {stem:题干, options:[选项数组], answer:答案, analysis:解析, chapter?:章节, knowledge?:考点}',
+              items: {
+                type: 'object',
+                properties: {
+                  stem: { type: 'string' }, options: { type: 'array', items: { type: 'string' } },
+                  answer: { type: 'string' }, analysis: { type: 'string' },
+                  chapter: { type: 'string' }, knowledge: { type: 'string' },
+                },
+                required: ['stem', 'answer'],
+              },
+            },
+            reason: { type: 'string', description: '一句话说明为什么创建' },
+          },
+          required: ['name', 'reason'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'update_content',
+        description: '按白名单字段更新任意已有内容：题库（name/questions）、卡片（front/back/tags）、三本条目（tags）、模板（name/essence/steps/signals/disguises/pitfalls）、各类型标题（note/annot/session 的 title）、作答（tags）。fields 里只放要改的字段。',
+        parameters: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['note', 'annot', 'bank', 'entry', 'template', 'card', 'record', 'session'], description: '内容类型' },
+            id: { type: 'string', description: '内容 ID' },
+            fields: { type: 'object', description: '要更新的字段与值（仅允许该类型白名单内的字段）' },
+            reason: { type: 'string', description: '一句话说明为什么改' },
+          },
+          required: ['kind', 'id', 'fields', 'reason'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'delete_content',
+        description: '删除任意一条内容（笔记/题库/三本/卡片/模板/作答/批注/对话）。危险操作：仅当学生明确要求删除时调用；笔记删除前系统会自动存版本快照（可从「历史」恢复），其余类型删除后只能靠数据备份找回。',
+        parameters: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['note', 'annot', 'bank', 'entry', 'template', 'card', 'record', 'session'], description: '内容类型' },
+            id: { type: 'string', description: '内容 ID' },
+            reason: { type: 'string', description: '一句话说明为什么删除' },
+          },
+          required: ['kind', 'id', 'reason'],
+        },
+      },
+    },
+  ];
   const NOTE_EDIT_TOOLS = [
     {
       type: 'function',
@@ -389,14 +486,38 @@ window.AI = (() => {
       },
     },
     ...NOTE_READ_TOOLS,
+    ...NOTE_CRUD_TOOLS,
   ];
 
-  async function toolResult(call, onToolCall, onRead) {
+  async function toolResult(call, onToolCall, onRead, onCrud) {
     const fn = call?.function || {};
     const name = String(fn.name || '');
     let args = {};
     try { args = typeof fn.arguments === 'string' ? JSON.parse(fn.arguments || '{}') : (fn.arguments || {}); }
     catch (e) { return { ok: false, error: '工具参数不是合法 JSON' }; }
+    // 增删改查工具：统一分发到 executeAgentOp（确认弹窗在执行器内）
+    if (['create_note', 'create_card', 'create_bank', 'update_content', 'delete_content'].includes(name)) {
+      if (typeof onCrud !== 'function') return { ok: false, error: '编辑模式未开启，无法增删改内容（可在对话栏右上角开启 ✎ 编辑模式）' };
+      const op = { op: name, reason: String(args.reason || '').slice(0, 200) };
+      if (name === 'create_note') {
+        op.title = String(args.title || '').trim().slice(0, 80);
+        op.html = cleanHtml(String(args.html || ''));
+      } else if (name === 'create_card') {
+        op.front = String(args.front || '').slice(0, 200);
+        op.back = String(args.back || '').slice(0, 500);
+        op.tags = Array.isArray(args.tags) ? args.tags.map(t => String(t).slice(0, 30)) : [];
+      } else if (name === 'create_bank') {
+        op.name = String(args.name || '').trim().slice(0, 60);
+        op.questions = Array.isArray(args.questions) ? args.questions : [];
+      } else {
+        op.kind = String(args.kind || '');
+        op.id = String(args.id || '');
+        if (name === 'update_content') {
+          op.fields = (args.fields && typeof args.fields === 'object' && !Array.isArray(args.fields)) ? args.fields : null;
+        }
+      }
+      try { return await onCrud(op); } catch (e) { return { ok: false, error: e.message || '操作执行失败' }; }
+    }
     if (name === 'search_content') {
       const q = String(args.query || '').trim();
       if (!q) return { ok: false, error: '搜索关键词不能为空' };
@@ -470,7 +591,7 @@ window.AI = (() => {
 
   // 笔记右侧对话栏：长期记忆摘要 + 焦点笔记 + 近期轮次 + 相关历史召回 + @引用 + 全局内容摘要
   // onToolCall 或 onRead 存在时启用 function calling：编辑模式可改笔记；普通模式只带只读检索工具，可查全部内容。
-  async function ctxChat({ noteTitle, noteText, selection, question, history = [], summary = '', onToolCall = null, noteBlocks = '', refsText = '', globalDigest = '', onRead = null, noteId = '' }) {
+  async function ctxChat({ noteTitle, noteText, selection, question, history = [], summary = '', onToolCall = null, noteBlocks = '', refsText = '', globalDigest = '', onRead = null, noteId = '', onCrud = null }) {
     const q = U.asText(question || '').trim();
     if (!q) throw new Error('问题不能为空');
     const { recent, recallText, stats } = assembleHistory(history, q);
@@ -513,7 +634,7 @@ window.AI = (() => {
       if (!res.toolCalls.length) { finalText = res.content; break; }
       messages.push({ role: 'assistant', content: res.content || null, tool_calls: res.toolCalls });
       for (const call of res.toolCalls) {
-        const result = await toolResult(call, onToolCall, onRead);
+        const result = await toolResult(call, onToolCall, onRead, onCrud);
         edits.push({ name: call?.function?.name || 'edit_note', args: call?.function?.arguments || '', result });
         messages.push({ role: 'tool', tool_call_id: call.id || U.uid('call'), content: JSON.stringify(result) });
       }

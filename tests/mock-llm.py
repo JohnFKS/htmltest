@@ -12,6 +12,8 @@
                  按 blockFrom/blockTo 读取区间全文 → replace_block 高亮该章标题块
     crossstyle   跨笔记批量样式：read_content 读取目标笔记 B 的块列表 → 对 B 的"第十章"
                  区间（标题块到 +2）一次 style_blocks（both：高亮+标红）
+    crud         增删改查四连：create_note → create_card → update_content(改卡背面)
+                 → delete_content(删掉刚建的卡片)——验证全链路与结果 ID 串联
   行为：最后一条消息 role 为 user → 返回 tool_calls（第一轮）；否则 → 返回最终文本（收尾轮）。
 
 配合 server.py：设置 AI baseUrl=http://127.0.0.1:<port>/v1、apiKey=mock、chatModel=mock 即可。
@@ -54,6 +56,31 @@ def find_chapter_block_index(system_text: str, keyword: str = "第十章") -> in
 
 
 def build_tool_call(with_note_id: bool, system_text: str, tool_round: int = 0, last_content: str = ""):
+    if SCENARIO == "crud":
+        # 增删改查四连：note → card → update → delete（card id 从 round1 的结果 JSON 里提取）
+        card_id = None
+        m = re.search(r'"id":"(card_[A-Za-z0-9_-]+)"', last_content)
+        if m:
+            card_id = m.group(1)
+        if tool_round == 0:
+            return {"id": "call_mock_1", "type": "function", "function": {"name": "create_note",
+                "arguments": json.dumps({"title": "agent 增删改查测试笔记", "html": "<p><mark>由 agent 创建的测试内容</mark></p>",
+                    "reason": "mock：验证创建笔记"}, ensure_ascii=False)}}, None
+        if tool_round == 1:
+            return {"id": "call_mock_2", "type": "function", "function": {"name": "create_card",
+                "arguments": json.dumps({"front": "测试卡片正面：基金三大要素？", "back": "持有人/管理人/托管人",
+                    "tags": ["mock", "测试"], "reason": "mock：验证创建卡片"}, ensure_ascii=False)}}, None
+        if tool_round == 2:
+            if not card_id:
+                return None, "round1 结果里找不到卡片 ID"
+            return {"id": "call_mock_3", "type": "function", "function": {"name": "update_content",
+                "arguments": json.dumps({"kind": "card", "id": card_id, "fields": {"back": "更新后的背面：三大当事人"}, "reason": "mock：验证更新卡片"}, ensure_ascii=False)}}, None
+        if tool_round == 3:
+            if not card_id:
+                return None, "round1 结果里找不到卡片 ID"
+            return {"id": "call_mock_4", "type": "function", "function": {"name": "delete_content",
+                "arguments": json.dumps({"kind": "card", "id": card_id, "reason": "mock：验证删除卡片"}, ensure_ascii=False)}}, None
+        return None, None
     if SCENARIO == "crossstyle":
         # 跨笔记批量样式：round0 读 B 的块列表；round1 对 B 的"第十章"区间 style_blocks
         bid = None
@@ -133,7 +160,8 @@ class Handler(BaseHTTPRequestHandler):
         if last.get("role") == "user" or (last.get("role") == "tool" and (
                 (SCENARIO == "multi" and tool_round < 4)
                 or (SCENARIO == "longnote" and tool_round < 2)
-                or (SCENARIO == "crossstyle" and tool_round < 2))):
+                or (SCENARIO == "crossstyle" and tool_round < 2)
+                or (SCENARIO == "crud" and tool_round < 4))):
             call, err = build_tool_call(SCENARIO in ("withnoteid", "multi"), system_text, tool_round, str(last.get("content") or ""))
             if err:
                 content, tool_calls = f"mock 内部错误：{err}", []
