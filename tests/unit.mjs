@@ -207,7 +207,7 @@ test('note-chat：编辑模式不再要求处于笔记页，普通模式仍禁�
 
 test('prompts：agent 模板含工具报错重试规则', () => {
   const src = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
-  assert.match(src, /不要因报错就声称自己没有编辑权限/, '报错后应修正重试而非误报无权限');
+  assert.match(src, /不要因报错就声称没有编辑权限/, '报错后应修正重试而非误报无权限');
 });
 
 test('provider：允许颜色类内联样式，归一化 ==高亮== 与 <font color>', () => {
@@ -220,7 +220,7 @@ test('provider：允许颜色类内联样式，归一化 ==高亮== 与 <font co
 
 test('prompts：agent 规则与 HTML_RULE 允许颜色类 style（不再一刀切禁止）', () => {
   const prompts = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
-  assert.match(prompts, /高亮重点 <span style="background-color: #FFF3A3">/, 'agent 规则 4 应给出高亮格式');
+  assert.match(prompts, /高亮 <span style="background-color: #FFF3A3">/, '能力清单应给出高亮格式');
   assert.match(prompts, /style 属性仅允许颜色类/, 'HTML_RULE 应仅禁非颜色 style，不再一刀切');
 });
 
@@ -241,7 +241,18 @@ test('prompts：ctxChat 模板含 @ 引用/全局摘要占位符与工具说明'
   assert.match(src, /\{refsText\}/);
   assert.match(src, /\{globalDigest\}/);
   assert.match(src, /search_content/, '普通模板应说明只读检索工具');
-  assert.match(src, /必须传 noteId/, 'agent 模板应说明跨笔记编辑规则');
+  assert.match(src, /noteId 必填/, 'agent 模板应说明跨笔记编辑规则');
   assert.match(src, /（ID：\{noteId\}，调用 edit_note 时作为 noteId 传入）/, 'agent 模板应注入当前笔记 ID 供 edit_note 使用');
-  assert.match(src, /能看到的?\s*整个学习项目的全部内容|你能看到整个学习项目的全部内容/, '提示词应声明全局内容视野');
+  assert.match(src, /看到并操作整个学习项目的内容/, '提示词应声明全局视野与操作能力');
+});
+
+test('prompts：agent 提示词为成熟风格的能力清单 + 边界声明 + 反幻觉规则', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
+  assert.match(src, /【你的能力】/, '应有能力总览段');
+  assert.match(src, /不确定某内容是否存在时，先搜再答/, '检索能力应说明使用时机');
+  assert.match(src, /先读后改：编辑非当前笔记前，先 read_content 拿到该笔记的块列表/, '应有 read-before-edit 工作流');
+  assert.match(src, /结果以工具返回为准/, '应以工具结果为准');
+  assert.match(src, /绝不编造编辑结果/, '应有反幻觉规则');
+  assert.match(src, /超出能力的事（没有对应工具/, '应显式声明能力边界');
+  assert.match(src, /新建或删除笔记、增删改题库与题目/, '边界应列明无工具的操作');
 });
