@@ -306,6 +306,14 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 .notes-layout { display: grid; height: calc(100vh - var(--topbar-h) - var(--view-pad) * 2); }
 .notes-layout > * { min-height: 0; }
 .notes-list { overflow-y: auto; }
+.note-item { position: relative; }
+.note-del {
+  position: absolute; right: 8px; top: 10px; padding: 1px 7px; font-size: 11px;
+  border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface);
+  color: var(--ink-3); cursor: pointer; font-family: var(--font); opacity: 0; transition: opacity .12s;
+}
+.note-item:hover .note-del { opacity: 1; }
+.note-del:hover { color: var(--danger); border-color: var(--danger); }
 .note-item {
   padding: 11px 13px; border-radius: var(--radius-sm); cursor: pointer;
   border: 1px solid transparent; margin-bottom: 6px;

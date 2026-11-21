@@ -83,8 +83,29 @@ Views.notes = {
         <div class="note-item ${n.id === this.currentId ? 'active' : ''}" data-id="${n.id}">
           <div class="note-item-title">${this._highlight(n.title || '无标题', q)}</div>
           <div class="note-item-sub">${U.fmt(n.updatedAt || n.createdAt)}</div>
+          <button class="note-del" data-del="${n.id}" title="删除这篇笔记">删除</button>
         </div>`).join('');
       listEl.querySelectorAll('.note-item').forEach(el => el.onclick = () => this.open(el.dataset.id, editor, titleInput));
+      listEl.querySelectorAll('[data-del]').forEach(btn => btn.onclick = async e => {
+        e.stopPropagation();
+        const id = btn.dataset.del;
+        const n = Store.find('notes', id);
+        if (!n) return;
+        const vers = versionsOf(id).length;
+        if (!await UI.confirm(`删除笔记《${n.title || '无标题'}》？\n将同时删除其 ${vers} 个历史版本；关联的历史对话会保留。此操作不可恢复，需要备份请先「导出 HTML」。`, { danger: true, confirmLabel: '允许删除' })) return;
+        Store.remove('notes', id);
+        (Store.coll('noteVersions') || []).filter(v => v.noteId === id).forEach(v => Store.remove('noteVersions', v.id));
+        if (this.currentId === id) {
+          this.currentId = null;
+          editor.innerHTML = '<p></p>';
+          titleInput.value = '';
+          dirty = false;
+          window.NoteChat?.onNoteChange?.(null);
+        }
+        renderList();
+        this.updateStatus();
+        UI.toast('笔记已删除');
+      });
       Ktx.renderMath(listEl);
     };
 

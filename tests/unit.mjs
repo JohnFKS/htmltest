@@ -317,3 +317,22 @@ test('rich-ask：executeAgentOp 增删改查执行器（白名单字段/笔记�
   assert.match(src, /confirmLabel: '允许删除'/, '删除确认按钮应区分文案');
   assert.match(src, /function normQuestions/, '题库题目应归一化校验');
 });
+
+test('UI CRUD：笔记删除入口 + 级联（版本/编辑器/对话）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/views/notes.js'), 'utf8');
+  assert.match(src, /class="note-del" data-del/, '列表项应有删除按钮');
+  assert.match(src, /e\.stopPropagation\(\)/, '删除按钮不应触发打开笔记');
+  assert.match(src, /将同时删除其 \$\{vers\} 个历史版本/, '确认弹窗应写明级联范围');
+  assert.match(src, /\.filter\(v => v\.noteId === id\)\.forEach\(v => Store\.remove\('noteVersions', v\.id\)\)/, '应级联删除版本快照');
+  assert.match(src, /onNoteChange\?\.\(null\)/, '删除当前笔记应同步对话栏');
+});
+
+test('UI CRUD：三本标签编辑 + 模板字段编辑弹窗', () => {
+  const books = readFileSync(path.join(ROOT, 'js/views/books.js'), 'utf8');
+  assert.match(books, /data-act="tags"/, '三本条目应有改标签入口');
+  assert.match(books, /Store\.update\('entries', id, \{ tags:/, '标签应持久化');
+  const tpl = readFileSync(path.join(ROOT, 'js/views/templates.js'), 'utf8');
+  assert.match(tpl, /data-act="edit"/, '模板应有编辑入口');
+  assert.match(tpl, /function editTemplate|editTemplate\(t, container\)/, '应有编辑弹窗方法');
+  assert.ok(tpl.includes("split(/[,，;；]/)"), '列表字段应支持逗号与分号分隔');
+});

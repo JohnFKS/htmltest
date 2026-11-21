@@ -55,6 +55,7 @@ Views.templates = {
         <div class="entry-foot">
           <span style="flex:1"></span>
           <button class="btn btn-sm" data-act="detail">详情</button>
+          <button class="btn btn-sm" data-act="edit">编辑</button>
           <button class="btn btn-sm" data-act="expand">✨ 扩容变式</button>
           <button class="btn btn-sm" data-act="add">＋ 添加成员题</button>
           <button class="btn btn-sm btn-ghost" data-act="del" style="color:var(--danger)">删除</button>
@@ -67,6 +68,7 @@ Views.templates = {
         const t = Store.find('templates', id);
         if (!t) return;
         if (btn.dataset.act === 'detail') this.showDetail(t);
+        if (btn.dataset.act === 'edit') { this.editTemplate(t, container); return; }
         if (btn.dataset.act === 'del' && await UI.confirm(`删除模板「${t.name}」？（成员题不受影响）`, { danger: true })) {
           Store.remove('templates', id);
           this.render(container);
@@ -75,6 +77,43 @@ Views.templates = {
         if (btn.dataset.act === 'add') await TplFlow.pickEntryThenGenerate(t.id);
       });
     });
+  },
+
+  editTemplate(t, container) {
+    const csv = arr => (arr || []).join('，');
+    const parseCsv = v => String(v || '').split(/[,，;；]/).map(s => s.trim()).filter(Boolean);
+    const m = UI.modal({
+      title: `编辑模板「${t.name}」`, raw: true, width: 640,
+      body: `
+        <div class="field-hint">名称与本质为文本；步骤/信号/伪装/易错用逗号或分号分隔。</div>
+        <div style="display:grid;gap:8px;margin-top:8px">
+          <input class="input" id="tpl-e-name" value="${U.esc(t.name || '')}" placeholder="模板名称">
+          <textarea class="input" id="tpl-e-essence" rows="3" placeholder="本质模型">${U.esc(t.essence || '')}</textarea>
+          <input class="input" id="tpl-e-steps" value="${U.esc(csv(t.steps))}" placeholder="解题步骤（逗号分隔）">
+          <input class="input" id="tpl-e-signals" value="${U.esc(csv(t.signals))}" placeholder="适用信号（逗号分隔）">
+          <input class="input" id="tpl-e-disguises" value="${U.esc(csv(t.disguises))}" placeholder="伪装变式（逗号分隔）">
+          <input class="input" id="tpl-e-pitfalls" value="${U.esc(csv(t.pitfalls))}" placeholder="易错点（逗号分隔）">
+        </div>`,
+      actions: [
+        { label: '取消' },
+        { label: '保存', primary: true, onClick: close => {
+          const name = m.el.querySelector('#tpl-e-name').value.trim();
+          if (!name) return UI.toast('模板名称不能为空', 'warn');
+          Store.update('templates', t.id, {
+            name,
+            essence: m.el.querySelector('#tpl-e-essence').value.trim(),
+            steps: parseCsv(m.el.querySelector('#tpl-e-steps').value),
+            signals: parseCsv(m.el.querySelector('#tpl-e-signals').value),
+            disguises: parseCsv(m.el.querySelector('#tpl-e-disguises').value),
+            pitfalls: parseCsv(m.el.querySelector('#tpl-e-pitfalls').value),
+          });
+          close();
+          UI.toast('模板已更新', 'success');
+          this.render(container);
+        } },
+      ],
+    });
+    void m;
   },
 
   showDetail(t) {

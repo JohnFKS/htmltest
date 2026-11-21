@@ -85,6 +85,7 @@ Views.books = {
           ${e.templateId ? `<span class="chip chip-tpl">已生成模板</span>` : ''}
           <span style="flex:1"></span>
           <button class="btn btn-sm" data-act="detail">详情</button>
+          <button class="btn btn-sm" data-act="tags">改标签</button>
           <button class="btn btn-sm btn-primary" data-act="totpl">✨ 生成做题模板</button>
           <button class="btn btn-sm btn-ghost" data-act="del" style="color:var(--danger)">删除</button>
         </div>
@@ -98,6 +99,13 @@ Views.books = {
         const entry = Store.find('entries', id);
         if (!entry) return;
         if (btn.dataset.act === 'detail') this.showDetail(entry);
+        if (btn.dataset.act === 'tags') {
+          const t = await UI.prompt('编辑标签（逗号分隔）', (entry.tags || []).join('，'), '多个标签用逗号分隔，留空清除全部标签');
+          if (t === null) return;
+          Store.update('entries', id, { tags: t.split(/[,，]/).map(s => s.trim()).filter(Boolean).slice(0, 12) });
+          UI.toast('标签已更新');
+          this.render(container);
+        }
         if (btn.dataset.act === 'del') {
           if (await UI.confirm('删除这条归档记录？（题目与作答记录不受影响）', { danger: true })) Store.remove('entries', id);
           this.render(container);
