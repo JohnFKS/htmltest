@@ -10,6 +10,8 @@
                  共 4 轮后收尾——用于验证多轮编辑累积与轮次上限
     longnote     长笔记两步定位法：先从【笔记结构目录】找到"第十章"的块编号 → read_content
                  按 blockFrom/blockTo 读取区间全文 → replace_block 高亮该章标题块
+    crossstyle   跨笔记批量样式：read_content 读取目标笔记 B 的块列表 → 对 B 的"第十章"
+                 区间（标题块到 +2）一次 style_blocks（both：高亮+标红）
   行为：最后一条消息 role 为 user → 返回 tool_calls（第一轮）；否则 → 返回最终文本（收尾轮）。
 
 配合 server.py：设置 AI baseUrl=http://127.0.0.1:<port>/v1、apiKey=mock、chatModel=mock 即可。
@@ -21,6 +23,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SCENARIO = "nonoteid"
 TARGET_TITLE = "欢迎使用智学笔记"   # withnoteid 场景要编辑的目标笔记标题（在摘要里按标题找 ID）
+B_TITLE = "模拟考卷笔记B"           # crossstyle 场景的跨笔记编辑目标（在摘要里按标题找 ID）
 HIGHLIGHT_HTML = ('<p><span style="background-color: #FFF3A3">模拟高亮重点（span 背景色）</span>、'
                   '<mark>mark 标记高亮</mark>、<span style="color: #C0392B">红色字体（span 颜色）</span></p>')
 
@@ -50,7 +53,30 @@ def find_chapter_block_index(system_text: str, keyword: str = "第十章") -> in
     return None
 
 
-def build_tool_call(with_note_id: bool, system_text: str, tool_round: int = 0):
+def build_tool_call(with_note_id: bool, system_text: str, tool_round: int = 0, last_content: str = ""):
+    if SCENARIO == "crossstyle":
+        # 跨笔记批量样式：round0 读 B 的块列表；round1 对 B 的"第十章"区间 style_blocks
+        bid = None
+        for line in system_text.splitlines():
+            if B_TITLE in line:
+                m = re.search(r"@note:([A-Za-z0-9_-]+)", line)
+                if m:
+                    bid = m.group(1)
+                    break
+        if not bid:
+            return None, "摘要中找不到目标笔记 B 的 ID"
+        if tool_round == 0:
+            return {"id": "call_mock_1", "type": "function", "function": {"name": "read_content",
+                "arguments": json.dumps({"kind": "note", "id": bid}, ensure_ascii=False)}}, None
+        # 从上一轮工具结果（B 的块列表）里找第十章标题块编号
+        idx = None
+        for m in re.finditer(r"(\d+)\. <h2> 第十章", last_content):
+            idx = int(m.group(1))
+        if idx is None:
+            return None, "B 的块列表里找不到第十章"
+        return {"id": f"call_mock_{tool_round + 1}", "type": "function", "function": {"name": "edit_note",
+            "arguments": json.dumps({"action": "style_blocks", "noteId": bid, "blockFrom": idx,
+                "blockTo": idx + 2, "styleType": "both", "reason": f"mock：将《{B_TITLE}》第十章整体高亮并标红"}, ensure_ascii=False)}}, None
     args = {"action": "append", "html": HIGHLIGHT_HTML, "reason": "mock：对重点考点做高亮批注"}
     if SCENARIO == "multi":
         # 模拟整章高亮：每轮改一个块（blockIndex 递增），mark 包裹，共 4 轮
@@ -105,8 +131,10 @@ class Handler(BaseHTTPRequestHandler):
         print(f"[mock-llm] path={self.path} scenario={SCENARIO} last_role={last.get('role')} msgs={len(messages)} tool_round={tool_round} max_tokens={body.get('max_tokens')} tools={len(body.get('tools') or [])}", flush=True)
 
         if last.get("role") == "user" or (last.get("role") == "tool" and (
-                (SCENARIO == "multi" and tool_round < 4) or (SCENARIO == "longnote" and tool_round < 2))):
-            call, err = build_tool_call(SCENARIO in ("withnoteid", "multi"), system_text, tool_round)
+                (SCENARIO == "multi" and tool_round < 4)
+                or (SCENARIO == "longnote" and tool_round < 2)
+                or (SCENARIO == "crossstyle" and tool_round < 2))):
+            call, err = build_tool_call(SCENARIO in ("withnoteid", "multi"), system_text, tool_round, str(last.get("content") or ""))
             if err:
                 content, tool_calls = f"mock 内部错误：{err}", []
             else:

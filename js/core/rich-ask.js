@@ -248,7 +248,31 @@ window.RichAsk = (() => {
       .forEach(v => Store.remove('noteVersions', v.id));
   }
 
-  async function executeNoteEdit({ action, html, title, blockIndex, reason, noteId }) {
+  // ---------- style_blocks：区间批量高亮/改色（整章标色无需重写正文） ----------
+  // 颜色值白名单：hex / rgb() / 颜色名——杜绝 url() 等注入
+  const SAFE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(0|1|0?\.\d+)\s*)?\)|[a-zA-Z]{3,25})$/;
+  function styleCssOf(styleType, bgColor, textColor) {
+    const bg = SAFE_COLOR_RE.test(String(bgColor || '').trim()) ? String(bgColor).trim() : '#FFF3A3';
+    const fg = SAFE_COLOR_RE.test(String(textColor || '').trim()) ? String(textColor).trim() : '#C0392B';
+    if (styleType === 'highlight') return `background-color: ${bg}`;
+    if (styleType === 'color') return `color: ${fg}`;
+    return `background-color: ${bg}; color: ${fg}`;
+  }
+  function applyStyleRange(blocks, from, to, css) {
+    const wrap = el => { el.innerHTML = `<span style="${css}">${el.innerHTML}</span>`; };
+    let n = 0;
+    for (let i = Math.max(0, from); i <= to && i < blocks.length; i++) {
+      const el = blocks[i];
+      const tag = el.tagName;
+      if (tag === 'UL' || tag === 'OL') [...el.children].filter(c => c.tagName === 'LI').forEach(wrap);
+      else if (tag === 'TABLE') [...el.querySelectorAll('td,th')].forEach(wrap);
+      else wrap(el);
+      n++;
+    }
+    return n;
+  }
+
+  async function executeNoteEdit({ action, html, title, blockIndex, blockFrom, blockTo, styleType, colorValue, reason, noteId }) {
     if (!Store.aiLive()) return { ok: false, error: '演示模式不支持编辑笔记，请先在设置里配置真实 AI' };
     // 目标笔记：不传 noteId 时编辑当前打开的笔记；传入 noteId 可编辑任意笔记（跨笔记编辑）
     const targetId = String(noteId || '').trim() || Views.notes?.currentId || '';
@@ -259,19 +283,27 @@ window.RichAsk = (() => {
     // 只要编辑器当前加载的就是目标笔记就走实时路径（撤销栈可用）；编辑器不存在/断开连接时走离线路径
     const canLive = !!editor && editor.isConnected && !!titleInput && Views.notes?.currentId === targetId;
     if (action === 'rename_title' && !String(title || '').trim()) return { ok: false, error: '新标题为空' };
+    const bf = Number.isInteger(blockFrom) ? blockFrom : null;
+    const bt = Number.isInteger(blockTo) ? blockTo : null;
+    if (action === 'style_blocks' && (bf === null || bt === null || bf > bt || !['highlight', 'color', 'both'].includes(String(styleType || '')))) {
+      return { ok: false, error: 'style_blocks 需要 blockFrom/blockTo（整数且 blockFrom ≤ blockTo）与 styleType（highlight/color/both）' };
+    }
 
     // replace_selection 依赖当前编辑器的选区/anchor，仅对打开的笔记有意义
     if (action === 'replace_selection' && !canLive) {
       return { ok: false, error: `《${note.title}》未在编辑器中打开，无法改写"选中文本"（该操作需要选区）。请改用 replace_block / insert_after_block / append，块编号先用 read_content 获取该笔记的块列表` };
     }
 
-    const label = { replace_selection: '改写选中文本', replace_block: '改写指定块', insert_after_block: '在指定块后插入', append: '追加到末尾', replace_all: '重写整篇', rename_title: '修改标题' }[action] || action;
-    const hint = title ? `新标题「${title}」` : (html ? `内容：${U.stripHtml(html).replace(/\s+/g, ' ').slice(0, 90)}…` : '');
+    const label = { replace_selection: '改写选中文本', replace_block: '改写指定块', insert_after_block: '在指定块后插入', append: '追加到末尾', replace_all: '重写整篇', rename_title: '修改标题', style_blocks: '批量设置高亮/字体颜色' }[action] || action;
+    const hint = action === 'style_blocks'
+      ? `区间：块 ${bf}~${bt}，样式：${styleType}${colorValue ? `（颜色 ${colorValue}）` : ''}`
+      : (title ? `新标题「${title}」` : (html ? `内容：${U.stripHtml(html).replace(/\s+/g, ' ').slice(0, 90)}…` : ''));
     if (!await UI.confirm(`AI 请求：${label}。\n理由：${reason}\n${hint}\n目标笔记：《${note.title}》${canLive ? '' : '（未在编辑器打开，将直接写入保存）'}\n\n执行前会自动保存一个版本快照，确定允许？`, { danger: action === 'replace_all' || !canLive, confirmLabel: '允许编辑' })) {
       return { ok: false, error: '用户取消了这次编辑' };
     }
 
     const safe = Sanitize.html(html || '');
+    let styleCount = 0;
     if (canLive) {
       Views.notes._createVersion?.('ai-agent');
       let changed = true;
@@ -287,6 +319,10 @@ window.RichAsk = (() => {
         if (!target) return { ok: false, error: `块编号 ${blockIndex} 不存在（共 ${blocks.length} 块）` };
         if (action === 'insert_after_block') target.insertAdjacentHTML('afterend', safe || '<p></p>');
         else target.outerHTML = safe || '<p></p>';
+      } else if (action === 'style_blocks') {
+        const blocks = [...editor.children].filter(el => BLOCK_RE.test(el.tagName));
+        if (bf > blocks.length - 1) return { ok: false, error: `blockFrom ${bf} 超出范围（该笔记共 ${blocks.length} 块）` };
+        styleCount = applyStyleRange(blocks, bf, Math.min(bt, blocks.length - 1), styleCssOf(styleType, colorValue, colorValue));
       } else if (action === 'replace_selection') {
         const ctx = NoteChat?.getAnchor?.() || null;
         const anchor = ctx?.anchor || null;
@@ -321,7 +357,7 @@ window.RichAsk = (() => {
       Views.notes._undo?.sync();
       Views.notes._markDirty?.();
       Store.update('notes', note.id, { title: titleInput.value.trim() || '未命名笔记', content: editor.innerHTML });
-      return { ok: true, message: `《${note.title}》${label}完成，已存版本快照` };
+      return { ok: true, message: `《${note.title}》${label}完成${action === 'style_blocks' ? `（${styleCount} 个块）` : ''}，已存版本快照` };
     }
 
     // 离线路径：目标笔记未打开，在脱敏副本上执行同样的块操作后直接保存
@@ -334,6 +370,10 @@ window.RichAsk = (() => {
       holder.insertAdjacentHTML('beforeend', safe || '<p></p>');
     } else if (action === 'replace_all') {
       holder.innerHTML = safe || '<p></p>';
+    } else if (action === 'style_blocks') {
+      const blocks = [...holder.children].filter(el => BLOCK_RE.test(el.tagName));
+      if (bf > blocks.length - 1) return { ok: false, error: `blockFrom ${bf} 超出范围（《${note.title}》共 ${blocks.length} 块，可用 read_content 获取该笔记的块列表）` };
+      styleCount = applyStyleRange(blocks, bf, Math.min(bt, blocks.length - 1), styleCssOf(styleType, colorValue, colorValue));
     } else if (action === 'replace_block' || action === 'insert_after_block') {
       const blocks = [...holder.children].filter(el => BLOCK_RE.test(el.tagName));
       const target = blocks[blockIndex ?? -1];
@@ -350,7 +390,7 @@ window.RichAsk = (() => {
     const patch = { content: holder.innerHTML };
     if (action === 'rename_title') patch.title = String(title).trim() || note.title;
     Store.update('notes', targetId, patch);
-    return { ok: true, message: `《${note.title}》${label}完成（该笔记未在编辑器打开，已直接保存），已存版本快照` };
+    return { ok: true, message: `《${note.title}》${label}完成${action === 'style_blocks' ? `（${styleCount} 个块）` : ''}（该笔记未在编辑器打开，已直接保存），已存版本快照` };
   }
 
   return { openAsk, appendToNote, noteBlocks, readBlockRange, executeNoteEdit };

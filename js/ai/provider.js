@@ -371,13 +371,17 @@ window.AI = (() => {
           type: 'object',
           properties: {
             action: {
-              type: 'string', enum: ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title'],
-              description: 'replace_selection=改写用户选中的文本；replace_block=改写第 blockIndex 个块；insert_after_block=在第 blockIndex 块后插入；append=追加到末尾；replace_all=重写整篇（慎用）；rename_title=改标题',
+              type: 'string', enum: ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title', 'style_blocks'],
+              description: 'replace_selection=改写用户选中的文本；replace_block=改写第 blockIndex 个块；insert_after_block=在第 blockIndex 块后插入；append=追加到末尾；replace_all=重写整篇（慎用）；rename_title=改标题；style_blocks=给 blockFrom~blockTo 区间的所有块批量加高亮/改字体颜色（整章标色用这个，无需重写正文）',
             },
-            html: { type: 'string', description: '要写入的受控 HTML 片段（replace_all 时为整篇 HTML）。高亮重点用 <span style="background-color: #FFF3A3">…</span> 或 <mark>…</mark>；字体颜色用 <span style="color: #C0392B">…</span>；style 属性仅允许 background-color 与 color 两种颜色值。禁止 script/img/a/id/事件属性及其他任何 style，可用 p/h4-h6/ul/ol/li/table/b/strong/i/em/mark/u/s/code/pre/blockquote/span 及 $公式$。' },
+            html: { type: 'string', description: '要写入的受控 HTML 片段（replace_all 时为整篇 HTML；style_blocks 时不需要）。高亮重点用 <span style="background-color: #FFF3A3">…</span> 或 <mark>…</mark>；字体颜色用 <span style="color: #C0392B">…</span>；style 属性仅允许 background-color 与 color 两种颜色值。禁止 script/img/a/id/事件属性及其他任何 style，可用 p/h4-h6/ul/ol/li/table/b/strong/i/em/mark/u/s/code/pre/blockquote/span 及 $公式$。' },
             title: { type: 'string', description: 'rename_title 时的新标题' },
             blockIndex: { type: 'integer', minimum: 0, description: '块序号，从 0 开始，对应目标笔记的块列表' },
-            noteId: { type: 'string', description: '必填：目标笔记 ID。编辑当前打开的笔记也请传它的 ID（见系统提示【当前笔记】）；编辑其他笔记时用【全局内容摘要】或 read_content 结果里的 ID，块编号用该笔记 read_content 返回的块列表编号' },
+            blockFrom: { type: 'integer', minimum: 0, description: 'style_blocks 时必填：起始块编号（含）' },
+            blockTo: { type: 'integer', minimum: 0, description: 'style_blocks 时必填：结束块编号（含）' },
+            styleType: { type: 'string', enum: ['highlight', 'color', 'both'], description: 'style_blocks 时必填：highlight=加背景高亮；color=改字体颜色；both=两者同时' },
+            colorValue: { type: 'string', description: 'style_blocks 时可选：颜色值（hex/rgb/颜色名），默认高亮 #FFF3A3、字色 #C0392B' },
+            noteId: { type: 'string', description: '必填：目标笔记 ID。编辑当前打开的笔记也请传它的 ID（见系统提示【当前笔记】）；编辑其他笔记时用【全局内容摘要】或 read_content 结果里的 ID，并把块编号换成该笔记 read_content 返回的块列表编号，不要把其他笔记的内容写进当前打开的笔记' },
             reason: { type: 'string', description: '用一句话说明这次编辑做了什么，展示给用户确认' },
           },
           required: ['action', 'reason', 'noteId'],
@@ -431,11 +435,18 @@ window.AI = (() => {
       };
     }
     const action = String(args.action || '');
-    if (!['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title'].includes(action)) {
+    if (!['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title', 'style_blocks'].includes(action)) {
       return { ok: false, error: `不支持的操作：${action}` };
     }
     if (action === 'rename_title') {
       if (!String(args.title || '').trim()) return { ok: false, error: '新标题不能为空' };
+    } else if (action === 'style_blocks') {
+      if (!Number.isInteger(args.blockFrom) || !Number.isInteger(args.blockTo) || args.blockFrom > args.blockTo) {
+        return { ok: false, error: 'style_blocks 需要 blockFrom 与 blockTo（整数，blockFrom ≤ blockTo）' };
+      }
+      if (args.styleType && !['highlight', 'color', 'both'].includes(String(args.styleType))) {
+        return { ok: false, error: 'styleType 必须是 highlight / color / both' };
+      }
     } else if (!String(args.html || '').trim() && action !== 'replace_all') {
       return { ok: false, error: '缺少 html 内容' };
     }
@@ -445,6 +456,10 @@ window.AI = (() => {
         html: cleanHtml(String(args.html || '')),
         title: String(args.title || '').trim(),
         blockIndex: Number.isInteger(args.blockIndex) ? args.blockIndex : null,
+        blockFrom: Number.isInteger(args.blockFrom) ? args.blockFrom : null,
+        blockTo: Number.isInteger(args.blockTo) ? args.blockTo : null,
+        styleType: String(args.styleType || '').trim() || null,
+        colorValue: String(args.colorValue || '').trim() || null,
         noteId,
         reason: String(args.reason || '编辑笔记').slice(0, 200),
       });

@@ -280,7 +280,7 @@ ${HTML_RULE}`,
 1. 感知全局：上面的【全局内容摘要】列出项目全部内容（8 类：笔记/批注/题库/三本/模板/卡片/作答/对话，每条带 ID）；
 2. 检索：调用 search_content 按关键词搜索全部内容，返回条目与 ID——不确定某内容是否存在时，先搜再答；
 3. 读取：调用 read_content 按 kind+id 读任意条目全文；读笔记会附带编号块列表；长笔记（正文被标注"仅是节选"时）用 blockFrom/blockTo 读取目标章节所在区间的块全文；
-4. 编辑笔记：调用 edit_note 直接修改任意笔记（noteId 必填）——replace_selection 改选中文本 / replace_block 改第 N 块 / insert_after_block 在块后插入 / append 追加末尾 / replace_all 整篇重写（慎用）/ rename_title 改标题；每次调用只做一个操作，执行前学生会收到确认弹窗；
+4. 编辑笔记：调用 edit_note 直接修改任意笔记（noteId 必填）——replace_selection 改选中文本 / replace_block 改第 N 块 / insert_after_block 在块后插入 / append 追加末尾 / replace_all 整篇重写（慎用）/ rename_title 改标题 / style_blocks 给 blockFrom~blockTo 区间批量加高亮或改字体颜色（styleType=highlight/color/both，整章标色优先用这个，无需重写正文）；每次调用只做一个操作，执行前学生会收到确认弹窗；
 5. 高亮与标色：高亮 <span style="background-color: #FFF3A3">…</span> 或 <mark>…</mark>，字体颜色 <span style="color: #C0392B">…</span>；style 属性仅允许 background-color 与 color 两种颜色值；
 6. 引用跳转：回答里用《标题》标注来源内容（如"根据《XX 笔记》…"、"结合《XX 对话》里讨论过的…"），系统会把标题渲染成可点击卡片，学生点击即跳转。
 超出能力的事（没有对应工具，学生提出时如实说明并给出文字建议，不要假装执行）：新建或删除笔记、增删改题库与题目、管理卡片/模板/批注。
@@ -291,7 +291,7 @@ ${HTML_RULE}`,
 3. 先读后改：编辑非当前笔记前，先 read_content 拿到该笔记的块列表再定位块；绝不把其他笔记的内容写进当前笔记；长笔记的完整工作流是两步定位：先看【笔记结构目录】找到目标章节的块编号，再用 read_content 的 blockFrom/blockTo 读取该区间的块全文核对内容，最后按块编号 replace_block 修改——【笔记正文】只是节选，不要因为它没提到某章节就断定笔记里没有；
 4. 精确优先：能 replace_block / replace_selection 就不要 replace_all（除非学生明确要求整篇重写）；学生说"把这段/这里改成…"且有选中文本时用 replace_selection；说"第 N 段"时用块列表编号；replace_selection 对未打开的笔记不可用（没有选区）；
 5. 目标笔记默认规则：学生要求编辑但未指明是哪篇笔记时，一律编辑当前笔记（ID 见【当前笔记】），不要自行挑选其他笔记；学生指明其他笔记时才用对应 noteId；
-6. 大范围修改（如整章高亮、多处标色）时，在同一轮里并行发起多个 edit_note（每个调用改一个块），或对连续区域用一次 replace_block/replace_all 重写整段——不要每轮只改一处，避免编辑次数不够用；
+6. 大范围修改（整章高亮、整章标红）优先用一次 style_blocks：区间从【笔记结构目录】取本章标题的块编号，到下一章标题块编号减一（最后一章到总块数减一）；区间内块的完整内容可用 read_content 的 blockFrom/blockTo 先读取核对；不便用区间样式时才退化为同一轮并行多个 replace_block；
 7. 不确定改哪里时先用文字反问确认，不要猜；
 8. reason 字段用一句话说清楚改了哪里、为什么改，会展示给学生确认；
 9. 工具报错时，按错误说明修正参数后重试（如补上 noteId、换正确的块编号）；不要因报错就声称没有编辑权限；确实无法完成时，如实说明原因和被拒绝的操作；

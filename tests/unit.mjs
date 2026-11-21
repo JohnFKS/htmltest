@@ -84,7 +84,7 @@ test('server.py：代理透传 tools 且回传 tool_calls（源码契约）', ()
 test('provider：edit_note 工具定义包含 6 种受控操作（源码契约）', () => {
   const src = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
   assert.match(src, /name: 'edit_note'/);
-  for (const op of ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title']) {
+  for (const op of ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title', 'style_blocks']) {
     assert.ok(src.includes(`'${op}'`), `缺少操作 ${op}`);
   }
   assert.match(src, /for \(let round = 0; round < 8; round\+\+\)/, '工具循环应有轮次上限（8 轮，整章批量编辑需要）');
@@ -209,7 +209,7 @@ test('note-chat：编辑模式不再要求处于笔记页，普通模式仍禁�
 test('prompts：目标笔记默认规则与批量编辑引导', () => {
   const src = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
   assert.match(src, /学生要求编辑但未指明是哪篇笔记时，一律编辑当前笔记/, '未指明时应默认当前笔记，不得自行挑选');
-  assert.match(src, /大范围修改（如整章高亮、多处标色）时，在同一轮里并行发起多个 edit_note/, '批量修改应并行多调用或整段重写');
+  assert.match(src, /大范围修改（整章高亮、整章标红）优先用一次 style_blocks/, '批量修改应优先用区间样式一次到位');
 });
 
 test('prompts：agent 模板含工具报错重试规则', () => {
@@ -233,7 +233,7 @@ test('prompts：agent 规则与 HTML_RULE 允许颜色类 style（不再一刀�
 
 test('rich-ask：跨笔记编辑（noteId 解析 / 离线保存 / ai-agent 快照 / 确认框显示目标笔记）', () => {
   const src = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
-  assert.match(src, /function executeNoteEdit\(\{ action, html, title, blockIndex, reason, noteId \}\)/);
+  assert.match(src, /function executeNoteEdit\(\{ action, html, title, blockIndex, blockFrom, blockTo, styleType, colorValue, reason, noteId \}\)/);
   assert.match(src, /const note = Store\.find\('notes', targetId\)/, '应按 noteId 解析目标笔记');
   assert.match(src, /目标笔记：《/, '确认弹窗必须显示目标笔记名，避免编辑错对象');
   assert.match(src, /replace_selection' && !canLive/, '未打开的笔记应拒绝 replace_selection（无选区）');
@@ -241,6 +241,15 @@ test('rich-ask：跨笔记编辑（noteId 解析 / 离线保存 / ai-agent 快�
   assert.match(src, /source: 'ai-agent'/, '离线快照来源应为 ai-agent');
   assert.match(src, /Store\.update\('notes', targetId, patch\)/, '离线编辑应持久化目标笔记');
   assert.match(src, /const noteBlocks = \(noteId\) =>/, 'noteBlocks 应支持任意笔记');
+});
+
+test('rich-ask：style_blocks 区间批量样式（颜色白名单 + 列表表格特殊处理）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
+  assert.match(src, /SAFE_COLOR_RE = /, '颜色值应有白名单校验，杜绝 url() 注入');
+  assert.match(src, /function applyStyleRange/, '应有区间批量样式函数');
+  assert.match(src, /tag === 'TABLE'\) \[\.\.\.el\.querySelectorAll\('td,th'\)\]\.forEach\(wrap\)/, '表格应逐单元格包裹');
+  assert.match(src, /style_blocks 需要 blockFrom\/blockTo/, '缺少区间参数应明确报错');
+  assert.match(src, /styleType（highlight\/color\/both）|styleType 必须是 highlight \/ color \/ both/, 'styleType 非法应报错');
 });
 
 test('rich-ask：长笔记两步定位（结构目录降级 + 块区间全文读取）', () => {
