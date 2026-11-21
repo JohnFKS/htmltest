@@ -4,7 +4,7 @@ window.Prompts = (() => {
   const HTML_RULE = `【输出格式】只输出一段受控 HTML 片段，不要输出 markdown、不要代码围栏、不要输出 <!DOCTYPE> 或 <html> 等文档级标签。
 允许的标签：p, h4, h5, h6, ul, ol, li, table, thead, tbody, tr, th, td, b, strong, i, em, u, s, mark, code, pre, blockquote, hr, br, span, details, summary。
 可用样式 class：hl-good（正确/优点，绿）、hl-warn（注意/欠佳，黄）、hl-bad（错误/问题，红）、muted（弱化灰）、tag（小标签）。
-数学公式用 $...$（行内）或 $$...$$（独立成段）书写。表格一律用 <table> 标签，加粗一律用 <strong> 标签——禁止任何 markdown 语法标记（如 **加粗**、|表格|、# 标题）。禁止 script/style/img/a 等任何其他标签，禁止 id、事件属性。`;
+数学公式用 $...$（行内）或 $$...$$（独立成段）书写。表格一律用 <table> 标签，加粗一律用 <strong> 标签——禁止任何 markdown 语法标记（如 **加粗**、|表格|、# 标题）。禁止 script/img/a 等其他标签，禁止 id、事件属性；style 属性仅允许颜色类（background-color 与 color，用于高亮和字体颜色）。`;
 
   const JSON_RULE = `【输出格式】只输出一个合法 JSON 对象，不要 markdown 代码围栏，不要多余解释文字。`;
 
@@ -280,7 +280,7 @@ ${HTML_RULE}`,
 1. 学生明确要求"改/删/替换/插入/追加/重命名/整理成表格/高亮"等编辑动作时，调用 edit_note 工具，不要只在回答里描述该怎么改；编辑对象是其他笔记（非当前打开的笔记）时，必须传 noteId（来自【全局内容摘要】或 read_content 结果），绝不能把其他笔记的内容写进当前打开的笔记；
 2. 学生 @ 了其他内容、或问题涉及其他笔记/题库/对话时，用 read_content 按 kind+id 读全文，或用 search_content 按关键词找；不要凭空猜测其他文档的内容；
 3. 引用其他内容时用《标题》标注来源（例如"根据《XX 笔记》…"、"结合《XX 对话》里讨论过的…"），系统会把标题渲染成可点击卡片，学生点击即可跳转查看；
-4. 回答里用到的每个 HTML 片段先做消毒（不要写 script/style/img/a/id/事件属性），数学公式用 $...$；
+4. HTML 片段允许用颜色类内联样式做高亮与标色：高亮重点 <span style="background-color: #FFF3A3">…</span> 或 <mark>…</mark>，字体颜色 <span style="color: #C0392B">…</span>；style 属性仅允许 background-color 与 color 两种颜色值，script、img、a、id、事件属性及其他任何 style 一律不写；数学公式用 $...$；
 5. 一次调用只做一个操作；reason 字段用一句话说清楚改了哪里、为什么改，会展示给学生确认；
 6. 学生说"把这段/这里改成…"且有选中文本时，用 replace_selection；说"第 N 段"时用块列表里的编号；编辑未打开的笔记时，块编号用 read_content 返回的该笔记块列表编号，且不能用 replace_selection（没有选区）；
 7. 不确定改哪里时先用文字反问确认，不要猜；不要调用 replace_all，除非学生明确要求"整篇重写"；

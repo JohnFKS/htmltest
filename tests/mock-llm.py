@@ -17,7 +17,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SCENARIO = "nonoteid"
 TARGET_TITLE = "欢迎使用智学笔记"   # withnoteid 场景要编辑的目标笔记标题（在摘要里按标题找 ID）
-HIGHLIGHT_HTML = "<p><mark>模拟高亮：重点考点（mock 写入）</mark></p>"
+HIGHLIGHT_HTML = ('<p><span style="background-color: #FFF3A3">模拟高亮重点（span 背景色）</span>、'
+                  '<mark>mark 标记高亮</mark>、<span style="color: #C0392B">红色字体（span 颜色）</span></p>')
 
 
 def extract_target_note_id(system_text: str) -> str | None:

@@ -156,6 +156,14 @@ window.AI = (() => {
       ...rows.map(r => build(r))].join('\n');
   }
 
+  // 归一化模型常用但语义含糊的装饰写法：==高亮== → <mark>；<font color> → <span style="color">
+  function normalizeDecor(t) {
+    return t
+      .replace(/==([^=\n]{1,200}?)==/g, '<mark>$1</mark>')
+      .replace(/<font\s+color="([^"]+)"[^>]*>/gi, '<span style="color: $1">')
+      .replace(/<\/font\s*>/gi, '</span>');
+  }
+
   // 清理 markdown 围栏、转换残留 markdown 块后交给消毒器
   function cleanHtml(text) {
     let t = U.asText(text).trim();
@@ -170,7 +178,7 @@ window.AI = (() => {
       try { t = MD.toHtml(t); } catch (e) { /* 转换失败保底原文 */ }
     }
     try { t = convertMdBlocks(t); } catch (e) { /* 转换失败保底原文 */ }
-    return Sanitize.html(t);
+    return Sanitize.html(normalizeDecor(t));
   }
 
   // /images/xx → dataURL（供多模态模型）
@@ -362,7 +370,7 @@ window.AI = (() => {
               type: 'string', enum: ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title'],
               description: 'replace_selection=改写用户选中的文本；replace_block=改写第 blockIndex 个块；insert_after_block=在第 blockIndex 块后插入；append=追加到末尾；replace_all=重写整篇（慎用）；rename_title=改标题',
             },
-            html: { type: 'string', description: '要写入的受控 HTML 片段（replace_all 时为整篇 HTML）。禁止 script/style/img/a/id/事件属性，可用 p/h4-h6/ul/ol/li/table/b/strong/i/em/mark/code/pre/blockquote/span 及 $公式$。' },
+            html: { type: 'string', description: '要写入的受控 HTML 片段（replace_all 时为整篇 HTML）。高亮重点用 <span style="background-color: #FFF3A3">…</span> 或 <mark>…</mark>；字体颜色用 <span style="color: #C0392B">…</span>；style 属性仅允许 background-color 与 color 两种颜色值。禁止 script/img/a/id/事件属性及其他任何 style，可用 p/h4-h6/ul/ol/li/table/b/strong/i/em/mark/u/s/code/pre/blockquote/span 及 $公式$。' },
             title: { type: 'string', description: 'rename_title 时的新标题' },
             blockIndex: { type: 'integer', minimum: 0, description: '块序号，从 0 开始，对应目标笔记的块列表' },
             noteId: { type: 'string', description: '必填：目标笔记 ID。编辑当前打开的笔记也请传它的 ID（见系统提示【当前笔记】）；编辑其他笔记时用【全局内容摘要】或 read_content 结果里的 ID，块编号用该笔记 read_content 返回的块列表编号' },

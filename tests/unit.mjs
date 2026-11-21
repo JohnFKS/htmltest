@@ -210,6 +210,20 @@ test('prompts：agent 模板含工具报错重试规则', () => {
   assert.match(src, /不要因报错就声称自己没有编辑权限/, '报错后应修正重试而非误报无权限');
 });
 
+test('provider：允许颜色类内联样式，归一化 ==高亮== 与 <font color>', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
+  assert.match(src, /style 属性仅允许 background-color 与 color 两种颜色值/, 'edit_note 描述应允许颜色样式');
+  assert.match(src, /function normalizeDecor/, '应有装饰写法归一化');
+  assert.match(src, /<mark>\$1<\/mark>/, '==高亮== 应转 mark');
+  assert.match(src, /<span style="color: \$1">/, 'font color 应转颜色 span');
+});
+
+test('prompts：agent 规则与 HTML_RULE 允许颜色类 style（不再一刀切禁止）', () => {
+  const prompts = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
+  assert.match(prompts, /高亮重点 <span style="background-color: #FFF3A3">/, 'agent 规则 4 应给出高亮格式');
+  assert.match(prompts, /style 属性仅允许颜色类/, 'HTML_RULE 应仅禁非颜色 style，不再一刀切');
+});
+
 test('rich-ask：跨笔记编辑（noteId 解析 / 离线保存 / ai-agent 快照 / 确认框显示目标笔记）', () => {
   const src = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
   assert.match(src, /function executeNoteEdit\(\{ action, html, title, blockIndex, reason, noteId \}\)/);
