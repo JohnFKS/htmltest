@@ -214,7 +214,8 @@ window.RichAsk = (() => {
     if (!note) return { ok: false, error: noteId ? `目标笔记不存在（${noteId}），可从【全局内容摘要】或 read_content 获取正确 ID` : '当前没有打开的笔记' };
     const editor = document.getElementById('editor-area');
     const titleInput = document.getElementById('note-title');
-    const canLive = App.currentView === 'notes' && Views.notes?.currentId === targetId && !!editor && !!titleInput;
+    // 只要编辑器当前加载的就是目标笔记就走实时路径（撤销栈可用）；编辑器不存在/断开连接时走离线路径
+    const canLive = !!editor && editor.isConnected && !!titleInput && Views.notes?.currentId === targetId;
     if (action === 'rename_title' && !String(title || '').trim()) return { ok: false, error: '新标题为空' };
 
     // replace_selection 依赖当前编辑器的选区/anchor，仅对打开的笔记有意义
@@ -245,19 +246,27 @@ window.RichAsk = (() => {
         if (action === 'insert_after_block') target.insertAdjacentHTML('afterend', safe || '<p></p>');
         else target.outerHTML = safe || '<p></p>';
       } else if (action === 'replace_selection') {
-        const anchor = NoteChat?.getAnchor?.() || null;
+        const ctx = NoteChat?.getAnchor?.() || null;
+        const anchor = ctx?.anchor || null;
         let range = null;
         if (anchor) {
           const s = nodeAtPath(editor, anchor.startPath), e = nodeAtPath(editor, anchor.endPath);
           if (s && e && editor.contains(s) && editor.contains(e)) {
             try { range = document.createRange(); range.setStart(s, anchor.startOffset || 0); range.setEnd(e, anchor.endOffset || 0); } catch (err) { range = null; }
           }
+          // 陈旧 anchor 校验：先前编辑会让路径漂移，命中文本与会话记录的选中文本不符时弃用，
+          // 避免"成功"替换到错误位置（学生看到的却是目标位置毫无变化）
+          if (range && !range.collapsed && String(ctx.selection || '').trim()) {
+            const hit = (range.toString() || '').replace(/\s+/g, ' ').trim();
+            const want = String(ctx.selection).replace(/\s+/g, ' ').trim();
+            if (!hit || (hit !== want && !want.includes(hit) && !hit.includes(want))) range = null;
+          } else if (range?.collapsed) range = null;
         }
         if (!range) {
           const sel = window.getSelection();
           if (sel && !sel.isCollapsed && sel.rangeCount && editor.contains(sel.anchorNode)) range = sel.getRangeAt(0);
         }
-        if (!range) return { ok: false, error: '找不到要改写的选中文本，请在笔记中重新选中后再试' };
+        if (!range) return { ok: false, error: '找不到要改写的选中文本（原选中位置可能已失效），请在笔记中重新选中后再试；或改用 replace_block 按块编号修改' };
         range.deleteContents();
         const frag = range.createContextualFragment(safe || '<span></span>');
         range.insertNode(frag);

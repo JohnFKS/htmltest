@@ -4,8 +4,10 @@
 
 用法：python3 tests/mock-llm.py [scenario] [port]
   scenario:
-    nonoteid   第一轮返回 edit_note 且【不带 noteId】——复现"模型忘传 noteId 导致改错笔记"
-    withnoteid 第一轮返回 edit_note 且带 noteId——从系统提示的【全局内容摘要】里解析目标笔记 ID
+    nonoteid     第一轮返回 edit_note 且【不带 noteId】——复现"模型忘传 noteId 导致改错笔记"
+    withnoteid   第一轮返回 edit_note 且带 noteId——从系统提示的【全局内容摘要】里解析目标笔记 ID
+    multi        模拟 dots 式整章高亮：每轮 1 个 replace_block（blockIndex 递增，mark 包裹），
+                 共 4 轮后收尾——用于验证多轮编辑累积与轮次上限
   行为：最后一条消息 role 为 user → 返回 tool_calls（第一轮）；否则 → 返回最终文本（收尾轮）。
 
 配合 server.py：设置 AI baseUrl=http://127.0.0.1:<port>/v1、apiKey=mock、chatModel=mock 即可。
@@ -32,16 +34,29 @@ def extract_target_note_id(system_text: str) -> str | None:
     return ids[-1] if ids else None
 
 
-def build_tool_call(with_note_id: bool, system_text: str):
+def build_tool_call(with_note_id: bool, system_text: str, tool_round: int = 0):
     args = {"action": "append", "html": HIGHLIGHT_HTML, "reason": "mock：对重点考点做高亮批注"}
-    if with_note_id:
+    if SCENARIO == "multi":
+        # 模拟整章高亮：每轮改一个块（blockIndex 递增），mark 包裹，共 4 轮
+        args = {
+            "action": "replace_block",
+            "blockIndex": tool_round,
+            "html": f"<p><mark>第 {tool_round} 块已高亮（mock）</mark></p>",
+            "reason": f"mock：高亮第 {tool_round} 块",
+        }
+        if with_note_id:
+            nid = extract_target_note_id(system_text)
+            if not nid:
+                return None, "摘要中找不到目标笔记 ID"
+            args["noteId"] = nid
+    elif with_note_id:
         nid = extract_target_note_id(system_text)
         if not nid:
             return None, "摘要中找不到目标笔记 ID"
         args["noteId"] = nid
         args["reason"] = f"mock：编辑《{TARGET_TITLE}》高亮考点"
     return {
-        "id": "call_mock_1",
+        "id": f"call_mock_{tool_round + 1}",
         "type": "function",
         "function": {"name": "edit_note", "arguments": json.dumps(args, ensure_ascii=False)},
     }, None
@@ -54,10 +69,11 @@ class Handler(BaseHTTPRequestHandler):
         messages = body.get("messages", [])
         last = messages[-1] if messages else {}
         system_text = next((m.get("content", "") for m in messages if m.get("role") == "system"), "")
-        print(f"[mock-llm] path={self.path} scenario={SCENARIO} last_role={last.get('role')} msgs={len(messages)} max_tokens={body.get('max_tokens')} tools={len(body.get('tools') or [])}", flush=True)
+        tool_round = sum(1 for m in messages if m.get("role") == "tool")
+        print(f"[mock-llm] path={self.path} scenario={SCENARIO} last_role={last.get('role')} msgs={len(messages)} tool_round={tool_round} max_tokens={body.get('max_tokens')} tools={len(body.get('tools') or [])}", flush=True)
 
-        if last.get("role") == "user":
-            call, err = build_tool_call(SCENARIO == "withnoteid", system_text)
+        if last.get("role") == "user" or (SCENARIO == "multi" and last.get("role") == "tool" and tool_round < 4):
+            call, err = build_tool_call(SCENARIO in ("withnoteid", "multi"), system_text, tool_round)
             if err:
                 content, tool_calls = f"mock 内部错误：{err}", []
             else:

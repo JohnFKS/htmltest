@@ -694,7 +694,12 @@ window.NoteChat = (() => {
     renderAll();
   }
 
-  const getAnchor = () => active()?.context?.anchor || null;
+  const getAnchor = () => {
+    const s = active();
+    if (!s?.context?.anchor) return null;
+    // 同时返回会话记录的选中文本，供 replace_selection 校验 anchor 是否漂移
+    return { anchor: s.context.anchor, selection: s.context.selection || '' };
+  };
 
   return { open, close, toggle, newSession, compactNow, onNoteChange, getAnchor, get isOpen() { return isOpen(); } };
 })();

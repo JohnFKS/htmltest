@@ -87,7 +87,7 @@ test('provider：edit_note 工具定义包含 6 种受控操作（源码契约�
   for (const op of ['replace_selection', 'replace_block', 'insert_after_block', 'append', 'replace_all', 'rename_title']) {
     assert.ok(src.includes(`'${op}'`), `缺少操作 ${op}`);
   }
-  assert.match(src, /for \(let round = 0; round < 4; round\+\+\)/, '工具循环应有轮次上限');
+  assert.match(src, /for \(let round = 0; round < 8; round\+\+\)/, '工具循环应有轮次上限（8 轮，整章批量编辑需要）');
 });
 
 test('工具执行器：替换块操作使用 Sanitize.html 消毒（源码契约）', () => {
@@ -203,6 +203,13 @@ test('provider：对话请求显式携带输出上限，防止配置过小导致
 test('note-chat：编辑模式不再要求处于笔记页，普通模式仍禁用编辑', () => {
   const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
   assert.match(src, /const useAgent = agentMode && Store\.aiLive\(\) && !!note;/, '编辑模式应在任意视图生效（离线路径兜底）');
+  assert.match(src, /return \{ anchor: s\.context\.anchor, selection: s\.context\.selection \|\| '' \}/, 'getAnchor 应同时返回选中文本供漂移校验');
+});
+
+test('prompts：目标笔记默认规则与批量编辑引导', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
+  assert.match(src, /学生要求编辑但未指明是哪篇笔记时，一律编辑当前笔记/, '未指明时应默认当前笔记，不得自行挑选');
+  assert.match(src, /大范围修改（如整章高亮、多处标色）时，在同一轮里并行发起多个 edit_note/, '批量修改应并行多调用或整段重写');
 });
 
 test('prompts：agent 模板含工具报错重试规则', () => {

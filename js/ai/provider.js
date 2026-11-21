@@ -475,10 +475,10 @@ window.AI = (() => {
       return { html: cleanHtml(raw), demo: false, context: stats };
     }
 
-    // 工具循环：最多 4 轮，防止模型反复调用造成无限循环
+    // 工具循环：最多 8 轮——整章高亮等批量修改需要逐块编辑，4 轮不够（防无限循环仍保留上限）
     const edits = [];
     let finalText = '';
-    for (let round = 0; round < 4; round++) {
+    for (let round = 0; round < 8; round++) {
       const res = await rawChat({
         messages,
         tools: canEdit ? NOTE_EDIT_TOOLS : NOTE_READ_TOOLS,
@@ -492,7 +492,7 @@ window.AI = (() => {
         edits.push({ name: call?.function?.name || 'edit_note', args: call?.function?.arguments || '', result });
         messages.push({ role: 'tool', tool_call_id: call.id || U.uid('call'), content: JSON.stringify(result) });
       }
-      if (round === 3) finalText = '已完成本轮允许的操作。';
+      if (round === 7) finalText = '本轮工具调用已达次数上限，尚未完成的编辑请让学生再次提出。';
     }
     const okCount = edits.filter(e => e.result?.ok).length;
     const prefix = okCount
