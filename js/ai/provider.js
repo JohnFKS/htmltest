@@ -21,13 +21,15 @@ window.AI = (() => {
     const full = U.asText(text || '');
     if (!full) return '（笔记内容为空）';
     if (full.length <= budget) return full;
+    // 长笔记必须让模型知道这是节选，否则会误以为笔记只有开头几章
+    const head = `（笔记全文约 ${full.length} 字，以下仅是节选，并非全文；完整章节结构见【笔记结构目录】，其余内容用 read_content 的 blockFrom/blockTo 分段读取）\n`;
     const sel = U.asText(selection || '').replace(/\s+/g, ' ').trim();
     const probe = sel.slice(0, Math.min(60, sel.length));
     const idx = probe ? full.indexOf(probe) : -1;
-    if (idx < 0) return full.slice(0, budget) + '\n…（未定位到选中位置，已取笔记开头节选）';
+    if (idx < 0) return head + full.slice(0, budget) + '\n…（未定位到选中位置，已取笔记开头节选）';
     const start = Math.max(0, idx - Math.round(budget * 0.3));
     const end = Math.min(full.length, start + budget);
-    return (start ? '…' : '') + full.slice(start, end) + (end < full.length ? '…' : '');
+    return head + (start ? '…' : '') + full.slice(start, end) + (end < full.length ? '…' : '');
   }
 
   // 分层上下文：近期保真轮次 + 按当前问题召回的相关旧轮次（摘要在系统提示里单独传）
@@ -345,12 +347,14 @@ window.AI = (() => {
       type: 'function',
       function: {
         name: 'read_content',
-        description: '按类型与 ID 读取任意一条内容的完整文本（笔记全文、整本题库、三本条目、模板、批注问答、历史对话等），用于跨对话/跨文档引用与对比；读取笔记时会附带编号块列表，供 edit_note 定位块。',
+        description: '按类型与 ID 读取任意一条内容的完整文本（笔记全文、整本题库、三本条目、模板、批注问答、历史对话等），用于跨对话/跨文档引用与对比；读笔记时附带编号块列表。长笔记用 blockFrom/blockTo 读取指定区间的块全文（配合【笔记结构目录】定位章节）。',
         parameters: {
           type: 'object',
           properties: {
             kind: { type: 'string', enum: ['note', 'annot', 'bank', 'entry', 'template', 'card', 'record', 'session'], description: '内容类型' },
             id: { type: 'string', description: '内容 ID，来自【全局内容摘要】或 search_content 结果' },
+            blockFrom: { type: 'integer', minimum: 0, description: '可选（仅 kind=note）：起始块编号，与 blockTo 一起读取该区间的块全文' },
+            blockTo: { type: 'integer', minimum: 0, description: '可选（仅 kind=note）：结束块编号（含）' },
           },
           required: ['kind', 'id'],
         },
@@ -401,6 +405,12 @@ window.AI = (() => {
       const kind = String(args.kind || ''), id = String(args.id || '');
       if (!kind || !id) return { ok: false, error: '缺少 kind 或 id' };
       try {
+        // 长笔记两步定位法第二步：按块区间读取全文
+        const blockFrom = Number.isInteger(args.blockFrom) ? args.blockFrom : null;
+        const blockTo = Number.isInteger(args.blockTo) ? args.blockTo : null;
+        if (kind === 'note' && (blockFrom !== null || blockTo !== null) && typeof onRead?.readRange === 'function') {
+          return onRead.readRange(id, blockFrom, blockTo);
+        }
         const r = (onRead?.resolve || (() => ({ ok: false, error: '读取能力未就绪' })))({ kind, id });
         // 笔记附带编号块列表与 noteId：跨笔记 replace_block / insert_after_block 需要块编号与目标 ID
         if (r?.ok && kind === 'note' && typeof onRead?.blocks === 'function') {

@@ -168,7 +168,7 @@ test('note-chat：发送时附加并清空 refs，generate 传入引用全文/�
   assert.match(src, /pendingRefs\.splice\(0\)/, '发送时应消费 pendingRefs');
   assert.match(src, /refs: refs\.length \? refs : undefined/, '用户消息应携带 refs（气泡渲染 chip）');
   assert.match(src, /NoteRefs\.digest\(\)/, 'generate 应传全局内容摘要');
-  assert.match(src, /const onRead = \{ search: NoteRefs\.search, resolve: NoteRefs\.resolve, blocks: id => RichAsk\.noteBlocks\(id\) \}/);
+  assert.match(src, /const onRead = \{\n        search: NoteRefs\.search,\n        resolve: NoteRefs\.resolve,\n        blocks: id => RichAsk\.noteBlocks\(id\),\n        readRange: \(id, from, to\) => RichAsk\.readBlockRange\(id, from, to\),\n      \};/, 'onRead 应接入结构目录与块区间读取');
   assert.match(src, /function extractRefs/, 'AI 回答应解析引用来源为可点击 chip');
   assert.match(src, /refs: cited\.length \? cited : undefined/, 'assistant 消息应携带解析出的引用');
   assert.match(src, /refs: user\.refs \|\| \[\]/, '重新生成应透传原引用');
@@ -241,6 +241,29 @@ test('rich-ask：跨笔记编辑（noteId 解析 / 离线保存 / ai-agent 快�
   assert.match(src, /source: 'ai-agent'/, '离线快照来源应为 ai-agent');
   assert.match(src, /Store\.update\('notes', targetId, patch\)/, '离线编辑应持久化目标笔记');
   assert.match(src, /const noteBlocks = \(noteId\) =>/, 'noteBlocks 应支持任意笔记');
+});
+
+test('rich-ask：长笔记两步定位（结构目录降级 + 块区间全文读取）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
+  assert.match(src, /OUTLINE_BUDGET/, '应有块列表预算阈值');
+  assert.match(src, /长笔记，以下仅列标题结构目录/, '超预算时应降级为标题结构目录');
+  assert.match(src, /function readBlockRange/, '应有块区间全文读取函数');
+  assert.match(src, /已达单次读取上限/, '区间读取应有预算截断提示');
+  assert.match(src, /readBlockRange, executeNoteEdit/, 'readBlockRange 应导出供工具层使用');
+});
+
+test('provider：read_content 支持块区间读取，长笔记节选需声明非全文', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
+  assert.match(src, /blockFrom: \{ type: 'integer'/, 'read_content 应定义 blockFrom 参数');
+  assert.match(src, /onRead\.readRange\(id, blockFrom, blockTo\)/, '块区间读取应分发到 readRange');
+  assert.match(src, /笔记全文约 \$\{full\.length\} 字，以下仅是节选/, '长笔记节选应声明并非全文');
+});
+
+test('prompts：长笔记两步定位工作流与结构目录说明', () => {
+  const src = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
+  assert.match(src, /【笔记结构目录（块编号从 0 开始/, 'agent 模板应有结构目录段');
+  assert.match(src, /两步定位：先看【笔记结构目录】找到目标章节的块编号/, '应有两步定位工作流');
+  assert.match(src, /不要因为它没提到某章节就断定笔记里没有/, '应防止模型因节选而误判笔记内容');
 });
 
 test('prompts：ctxChat 模板含 @ 引用/全局摘要占位符与工具说明', () => {

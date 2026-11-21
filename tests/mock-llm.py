@@ -8,6 +8,8 @@
     withnoteid   第一轮返回 edit_note 且带 noteId——从系统提示的【全局内容摘要】里解析目标笔记 ID
     multi        模拟 dots 式整章高亮：每轮 1 个 replace_block（blockIndex 递增，mark 包裹），
                  共 4 轮后收尾——用于验证多轮编辑累积与轮次上限
+    longnote     长笔记两步定位法：先从【笔记结构目录】找到"第十章"的块编号 → read_content
+                 按 blockFrom/blockTo 读取区间全文 → replace_block 高亮该章标题块
   行为：最后一条消息 role 为 user → 返回 tool_calls（第一轮）；否则 → 返回最终文本（收尾轮）。
 
 配合 server.py：设置 AI baseUrl=http://127.0.0.1:<port>/v1、apiKey=mock、chatModel=mock 即可。
@@ -34,6 +36,20 @@ def extract_target_note_id(system_text: str) -> str | None:
     return ids[-1] if ids else None
 
 
+def extract_current_note_id(system_text: str) -> str | None:
+    """从【当前笔记】的（ID：xxx）里提取当前笔记 ID。"""
+    m = re.search(r"【当前笔记】\n.*?（ID：([A-Za-z0-9_-]+)", system_text)
+    return m.group(1) if m else None
+
+
+def find_chapter_block_index(system_text: str, keyword: str = "第十章") -> int | None:
+    """从【笔记结构目录】里找到含关键词的标题所在块编号。"""
+    for line in system_text.splitlines():
+        if keyword in line and re.search(r"块 (\d+) · <h", line):
+            return int(re.search(r"块 (\d+)", line).group(1))
+    return None
+
+
 def build_tool_call(with_note_id: bool, system_text: str, tool_round: int = 0):
     args = {"action": "append", "html": HIGHLIGHT_HTML, "reason": "mock：对重点考点做高亮批注"}
     if SCENARIO == "multi":
@@ -49,6 +65,22 @@ def build_tool_call(with_note_id: bool, system_text: str, tool_round: int = 0):
             if not nid:
                 return None, "摘要中找不到目标笔记 ID"
             args["noteId"] = nid
+    elif SCENARIO == "longnote":
+        # 两步定位法：round0 读目录定位第十章 → 区间读取；round1 高亮该章标题块
+        nid = extract_current_note_id(system_text)
+        idx = find_chapter_block_index(system_text, "第十章")
+        if not nid or idx is None:
+            return None, "系统提示里找不到当前笔记 ID 或第十章的结构目录条目"
+        if tool_round == 0:
+            return {"id": "call_mock_1", "type": "function", "function": {"name": "read_content",
+                "arguments": json.dumps({"kind": "note", "id": nid, "blockFrom": max(0, idx - 1), "blockTo": idx + 2}, ensure_ascii=False)}}, None
+        args = {
+            "action": "replace_block",
+            "blockIndex": idx,
+            "html": "<h2><mark>第十章 长笔记定位高亮（mock）</mark></h2>",
+            "noteId": nid,
+            "reason": "mock：两步定位法高亮第十章",
+        }
     elif with_note_id:
         nid = extract_target_note_id(system_text)
         if not nid:
@@ -72,7 +104,8 @@ class Handler(BaseHTTPRequestHandler):
         tool_round = sum(1 for m in messages if m.get("role") == "tool")
         print(f"[mock-llm] path={self.path} scenario={SCENARIO} last_role={last.get('role')} msgs={len(messages)} tool_round={tool_round} max_tokens={body.get('max_tokens')} tools={len(body.get('tools') or [])}", flush=True)
 
-        if last.get("role") == "user" or (SCENARIO == "multi" and last.get("role") == "tool" and tool_round < 4):
+        if last.get("role") == "user" or (last.get("role") == "tool" and (
+                (SCENARIO == "multi" and tool_round < 4) or (SCENARIO == "longnote" and tool_round < 2))):
             call, err = build_tool_call(SCENARIO in ("withnoteid", "multi"), system_text, tool_round)
             if err:
                 content, tool_calls = f"mock 内部错误：{err}", []

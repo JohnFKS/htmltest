@@ -185,13 +185,55 @@ window.RichAsk = (() => {
 
   // ---------- Function calling 工具执行器：AI 直接编辑笔记（受控块操作） ----------
   const BLOCK_RE = /^(P|LI|BLOCKQUOTE|H1|H2|H3|H4|H5|H6|PRE|DIV|HR|TABLE|FIGURE|UL|OL|TR|FIGCAPTURE)$/;
-  const noteBlocks = (noteId) => {
-    const note = Store.find('notes', noteId || Views.notes?.currentId || '');
+  const OUTLINE_BUDGET = 10500;   // 块列表预算：超过则降级为标题结构目录（长笔记两步定位法第一步）
+  const blocksOf = note => {
     const holder = document.createElement('div');
     holder.innerHTML = Sanitize.html(note?.content || '');
-    const blocks = [...holder.children].filter(el => BLOCK_RE.test(el.tagName));
-    return blocks.map((el, i) => `${i}. <${el.tagName.toLowerCase()}> ${U.stripHtml(el.outerHTML).replace(/\s+/g, ' ').trim().slice(0, 140) || '（空块）'}`).join('\n');
+    return [...holder.children].filter(el => BLOCK_RE.test(el.tagName));
   };
+  const blockText = el => U.stripHtml(el.outerHTML).replace(/\s+/g, ' ').trim();
+
+  const noteBlocks = (noteId) => {
+    const note = Store.find('notes', noteId || Views.notes?.currentId || '');
+    const blocks = blocksOf(note);
+    const full = blocks.map((el, i) => `${i}. <${el.tagName.toLowerCase()}> ${blockText(el).slice(0, 140) || '（空块）'}`).join('\n');
+    if (full.length <= OUTLINE_BUDGET) return `共 ${blocks.length} 块。\n${full}`;
+    // 长笔记两步定位法第一步：只列标题级结构目录，章节全文用 read_content 的 blockFrom/blockTo 读取
+    const pick = level => blocks
+      .map((el, i) => ({ i, tag: el.tagName.toLowerCase(), text: blockText(el) }))
+      .filter(x => new RegExp(`^h[1-${level}]$`).test(x.tag) && x.text);
+    let heads = pick(3);
+    if (!heads.length) heads = pick(6);
+    if (heads.length) {
+      return `共 ${blocks.length} 块（长笔记，以下仅列标题结构目录）。编辑前先用 read_content 的 blockFrom/blockTo 读取目标章节所在区间的块全文，再按块编号修改。\n`
+        + heads.slice(0, 200).map(h => `块 ${h.i} · <${h.tag}> ${h.text.slice(0, 80)}`).join('\n');
+    }
+    // 无标题长笔记：紧凑预览每块开头
+    const compact = blocks.map((el, i) => `${i}. ${blockText(el).slice(0, 40) || '（空块）'}`).join('\n');
+    return `共 ${blocks.length} 块（长笔记且无标题结构，仅列每块开头预览）。用 read_content 的 blockFrom/blockTo 分段读取块全文。\n${compact.slice(0, OUTLINE_BUDGET)}`;
+  };
+
+  // 两步定位法第二步：读取指定区间的块全文（供长笔记定位章节后精确编辑）
+  function readBlockRange(noteId, from, to) {
+    const note = Store.find('notes', noteId || Views.notes?.currentId || '');
+    if (!note) return { ok: false, error: '目标笔记不存在' };
+    const blocks = blocksOf(note);
+    if (!blocks.length) return { ok: true, text: `《${note.title}》共 0 块（空笔记）` };
+    const f = Math.min(Math.max(Math.floor(Number(from)) || 0, 0), blocks.length - 1);
+    const tRaw = (to === undefined || to === null || Number.isNaN(Number(to))) ? blocks.length - 1 : Math.floor(Number(to));
+    const t = Math.min(Math.max(tRaw, f), blocks.length - 1);
+    const lines = [];
+    let used = 0, truncated = false;
+    for (let i = f; i <= t; i++) {
+      const line = `${i}. <${blocks[i].tagName.toLowerCase()}> ${blockText(blocks[i]).slice(0, 1500) || '（空块）'}`;
+      if (used + line.length > 12000) { truncated = true; break; }
+      lines.push(line); used += line.length;
+    }
+    const tail = truncated
+      ? `\n…（已达单次读取上限，请缩小 blockFrom/blockTo 范围继续读取）`
+      : (t < blocks.length - 1 ? `\n（以上为块 ${f}~${t}；该笔记共 ${blocks.length} 块）` : '');
+    return { ok: true, text: `《${note.title}》共 ${blocks.length} 块，以下是块 ${f}~${t} 的全文：\n${lines.join('\n')}${tail}` };
+  }
 
   // 未打开笔记的版本快照：schema 与 notes.js createVersion 一致，并按 maxVersions 裁剪
   function snapshotVersion(note) {
@@ -311,5 +353,5 @@ window.RichAsk = (() => {
     return { ok: true, message: `《${note.title}》${label}完成（该笔记未在编辑器打开，已直接保存），已存版本快照` };
   }
 
-  return { openAsk, appendToNote, noteBlocks, executeNoteEdit };
+  return { openAsk, appendToNote, noteBlocks, readBlockRange, executeNoteEdit };
 })();
