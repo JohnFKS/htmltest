@@ -143,7 +143,8 @@ class Handler(BaseHTTPRequestHandler):
             tool_feedback = ""
             if last.get("role") == "tool":
                 tool_feedback = str(last.get("content", ""))[:200]
-            content = f"（mock 收尾）本轮工具反馈：{tool_feedback}"
+            cite = {"withnoteid": "《欢迎使用智学笔记》", "crossstyle": "《模拟考卷笔记B》"}.get(SCENARIO, "")
+            content = f"（mock 收尾）本轮工具反馈：{tool_feedback}" + (f"\n本次参考了{cite}的内容。" if cite else "")
             tool_calls = []
 
         resp = {"choices": [{"message": {"role": "assistant", "content": content, "tool_calls": tool_calls}}], "usage": {}}
