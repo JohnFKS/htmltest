@@ -591,11 +591,11 @@ window.AI = (() => {
 
   // 笔记右侧对话栏：长期记忆摘要 + 焦点笔记 + 近期轮次 + 相关历史召回 + @引用 + 全局内容摘要
   // onToolCall 或 onRead 存在时启用 function calling：编辑模式可改笔记；普通模式只带只读检索工具，可查全部内容。
-  async function ctxChat({ noteTitle, noteText, selection, question, history = [], summary = '', onToolCall = null, noteBlocks = '', refsText = '', globalDigest = '', onRead = null, noteId = '', onCrud = null }) {
+  async function ctxChat({ noteTitle, noteText, selection, question, history = [], summary = '', onToolCall = null, noteBlocks = '', refsText = '', globalDigest = '', quotedAnswer = '', parentQuestion = '', onRead = null, noteId = '', onCrud = null }) {
     const q = U.asText(question || '').trim();
     if (!q) throw new Error('问题不能为空');
     const { recent, recallText, stats } = assembleHistory(history, q);
-    if (!live()) return Mock.ctxChat({ noteTitle, selection, question: q, history, summary, context: stats, refsText, globalDigest });
+    if (!live()) return Mock.ctxChat({ noteTitle, selection, question: q, history, summary, context: stats, refsText, globalDigest, quotedAnswer, parentQuestion });
     // 编辑模式：edit_note + 读取工具；普通模式：仅只读检索工具（提示词仍用普通模板，不提编辑块列表）
     const canEdit = typeof onToolCall === 'function';
     const useTools = canEdit || onRead != null;
@@ -609,6 +609,8 @@ window.AI = (() => {
       globalDigest: U.asText(globalDigest || '').slice(0, 16000) || '（暂无全局内容）',
       noteId: U.asText(noteId || '').slice(0, 80) || '未知',
       question: q,
+      quotedAnswer: U.asText(quotedAnswer || '').slice(0, 4000) || '（本轮不是嵌套提问）',
+      parentQuestion: U.asText(parentQuestion || '').slice(0, 800) || '（无）',
     });
     if (recallText) system += `\n\n【相关历史召回】\n${recallText}`;
     const messages = [

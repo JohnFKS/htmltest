@@ -91,10 +91,16 @@ window.NoteRefs = (() => {
     return { ok: true, text: `【引用：${KINDS[ref.kind]?.label || ref.kind}｜${meta.title}】\n${body}` };
   }
 
-  // 全局内容摘要：让 agent 知道"项目里都有什么"，再按需用工具读全文
+  // 全局内容摘要：让 agent 知道"项目里都有什么"，再按需用工具读全文。
+  // 历史对话只报数量、不注入标题或末条内容——否则每次提问都会被动带入上一次问答的记忆。
   function digest(limitPerKind = 15) {
     const parts = [];
     for (const [kind, cfg] of Object.entries(KINDS)) {
+      if (kind === 'session') {
+        const n = (Store.coll(cfg.coll) || []).length;
+        if (n) parts.push(`【历史对话 · ${n} 条】仅保留数量；如需读取请用 search_content，或在对话中用 @ 显式引用历史对话`);
+        continue;
+      }
       const items = Store.coll(cfg.coll) || [];
       if (!items.length) continue;
       const lines = items.slice(0, limitPerKind).map(it => {

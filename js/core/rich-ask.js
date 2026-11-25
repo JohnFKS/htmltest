@@ -49,7 +49,7 @@ window.RichAsk = (() => {
     const el = scopeEl(sel.anchorNode) || scopeEl(sel.focusNode);
     if (!el) return null;
     const editor = el.closest('#editor-area');
-    let anchor = null;
+    let anchor = null, source = null;
     if (editor) {
       const range = sel.getRangeAt(0);
       const startPath = pathOf(range.startContainer, editor);
@@ -59,11 +59,30 @@ window.RichAsk = (() => {
         anchor = { startPath, startOffset: range.startOffset, endPath, endOffset: range.endOffset, blockPath: pathOf(block, editor) };
       }
     }
+    let noteId = editor ? (Views.notes?.currentId || null) : null;
+    // 在 AI 回答气泡内选中：带上来源会话/消息/父问题，形成嵌套提问上下文（不继承父会话历史）
+    const bubble = editor ? null : el.closest('.chat-bubble.ai-report');
+    const msgEl = bubble?.closest('[data-msg-id]');
+    const parent = msgEl?.dataset.sessionId ? Store.find('chatSessions', msgEl.dataset.sessionId) : null;
+    if (parent && msgEl) {
+      const i = parent.messages?.findIndex(m => m.id === msgEl.dataset.msgId) ?? -1;
+      const parentMsg = i >= 0 ? [...parent.messages.slice(0, i)].reverse().find(m => m.role === 'user') : null;
+      const holder = document.createElement('div');
+      holder.appendChild(sel.getRangeAt(0).cloneContents());
+      let frag = Sanitize.html(holder.innerHTML);
+      if (frag && !/<(?:p|div|h[1-6]|ul|ol|li|blockquote|pre|table|figure)(?:\s|>)/i.test(frag)) frag = `<p>${frag}</p>`;
+      source = {
+        sessionId: parent.id, msgId: msgEl.dataset.msgId,
+        question: U.asText(parentMsg?.text || parent.title || '').slice(0, 1200),
+        html: frag,
+      };
+      noteId = parent.noteId || null;
+      anchor = parent.context?.anchor || null;
+    }
     return {
       text: text.slice(0, 1200),
-      // 仅在笔记编辑器内选中时才绑定当前笔记；题目/报告等场景走「通用问答」
-      noteId: editor ? (Views.notes?.currentId || null) : null,
-      anchor,
+      // 仅在笔记编辑器内选中时才绑定当前笔记；AI 回答选中则沿用父会话笔记
+      noteId, anchor, ...(source ? { source } : {}),
     };
   }
 
@@ -82,7 +101,7 @@ window.RichAsk = (() => {
     menu = document.createElement('div');
     menu.className = 'ctx-menu';
     menu.innerHTML = `
-      <button data-act="ask">🤖 在右侧对话栏提问…</button>
+      <button data-act="ask">${sel.source ? '↳ 针对这段 AI 回答追问…' : '🤖 在右侧对话栏提问…'}</button>
       <button data-act="explain">✨ 让 AI 解释这段（右侧）</button>`;
     menu.style.left = U.clamp(e.clientX, 8, Math.max(8, innerWidth - 240)) + 'px';
     menu.style.top = U.clamp(e.clientY, 8, Math.max(8, innerHeight - 96)) + 'px';
@@ -103,6 +122,7 @@ window.RichAsk = (() => {
       noteId: sel.noteId,
       selection: sel.text,
       anchor: sel.anchor,
+      ...(sel.source ? { source: sel.source } : {}),
       ...(preset ? { question: preset, autoSend: true } : { draft: '' }),
     });
   }

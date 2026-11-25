@@ -854,10 +854,14 @@ input[type="range"] { accent-color: var(--primary); width: 100%; }
   background: var(--surface); box-shadow: var(--shadow-lg); font-size: 12px; color: var(--ink-2);
 }
 .chat-selection-bar button {
-  padding: 3px 9px; border: none; border-radius: 5px; cursor: pointer;
-  background: var(--accent); color: #fff; font-size: 12px; font-family: var(--font);
+  padding: 3px 9px; border: 1px solid transparent; border-radius: 5px; cursor: pointer;
+  background: var(--accent); color: #fff; font-size: 12px; font-family: var(--font); white-space: nowrap;
 }
 .chat-selection-bar button:hover { background: #a53f22; }
+.chat-selection-bar button[data-act="annot"] {
+  background: transparent; border-color: var(--line-2); color: var(--ink-2);
+}
+.chat-selection-bar button[data-act="annot"]:hover { background: var(--surface-2); color: var(--ink); }
 .chat-typing { display: flex; width: auto; align-items: center; gap: 4px; padding: 13px 14px; }
 .chat-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: chatPulse 1s infinite alternate; }
 .chat-typing i:nth-child(2) { animation-delay: .2s; }

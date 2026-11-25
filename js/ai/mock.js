@@ -164,14 +164,16 @@ window.Mock = (() => {
   }
 
   // 演示：笔记右侧多轮对话（承接轮次，明确标注演示）
-  function ctxChat({ selection, question, history = [], noteTitle, summary = '', context = {}, refsText = '', globalDigest = '' } = {}) {
+  function ctxChat({ selection, question, history = [], noteTitle, summary = '', context = {}, refsText = '', globalDigest = '', quotedAnswer = '', parentQuestion = '' } = {}) {
     const turns = history.filter(m => m.role === 'user').length;
     const sel = String(selection || '').trim().slice(0, 80);
     const refCount = (String(refsText || '').match(/【引用：/g) || []).length;
     const digestOn = !!String(globalDigest || '') && !String(globalDigest).includes('当前知识库为空');
+    const nested = !!String(quotedAnswer || '').trim();
     return { html: `${badge}
 <h4>演示回答 · 第 ${turns + 1} 轮</h4>
 <p>围绕「${U.esc(noteTitle || '当前笔记')}」，你问的是「${U.esc(String(question || '').slice(0, 60))}」${sel ? `，本轮选中文本是「${U.esc(sel)}」` : ''}。</p>
+${nested ? `<p class="muted">↳ 嵌套提问：父问题「${U.esc(String(parentQuestion || '').slice(0, 50))}」，仅引用该段 AI 回答作为定位，未继承父会话记忆。</p>` : ''}
 <ul>
 <li>演示模式不调用真实大模型：这里展示的是分层上下文的排版与占位。</li>
 <li>${turns ? `已识别到前文 ${turns} 轮；本轮送入近期对话 ${context.recent || 0} 条、相关历史召回 ${context.recalled || 0} 条。` : '这是本会话的第一轮；配置真实 AI 后将基于整篇笔记与选中文本作答。'}</li>

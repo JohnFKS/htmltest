@@ -54,17 +54,19 @@ window.NoteChat = (() => {
       .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0] || null;
   }
 
-  function createSession({ noteId = null, selection = '', anchor = null, title = '' } = {}) {
+  function createSession({ noteId = null, selection = '', anchor = null, title = '', source = null } = {}) {
     const note = noteById(noteId);
     const s = {
       id: U.uid('chat'), noteId: noteId || null, noteTitle: note?.title || '通用问答',
-      title: title || '新对话', context: { selection: String(selection || '').slice(0, 1200), anchor: anchor || null },
+      title: title || '新对话', context: { selection: String(selection || '').slice(0, 1200), anchor: anchor || null, source },
       memory: { summary: '', compacted: 0, updatedAt: null },
       messages: [], createdAt: U.now(), updatedAt: U.now(),
     };
     Store.insert(COLL, s);
     return s;
   }
+
+  const emptyForNote = id => all().find(s => (s.noteId || null) === (id || null) && !s.messages?.length) || null;
 
   // ---------- 窗口布局：同时只展开一个，其余缩小为底部标签（生成不中断） ----------
   function updateBodyState() {
@@ -167,7 +169,7 @@ window.NoteChat = (() => {
     openAt(w, m[1] || '', m.index + m[0].indexOf('@'));
   }
 
-  // ---------- 选中 AI 回答的一部分作为批注 ----------
+  // ---------- 选中 AI 回答的一部分：批注 / 嵌套追问 ----------
   function hideSelectionBar(w) {
     w.selBar?.remove();
     w.selBar = null;
@@ -187,23 +189,23 @@ window.NoteChat = (() => {
     let html = Sanitize.html(holder.innerHTML);
     if (!html) return null;
     if (!/<(?:p|div|h[1-6]|ul|ol|li|blockquote|pre|table|figure)(?:\s|>)/i.test(html)) html = `<p>${html}</p>`;
-    return { msgId: msg.dataset.msgId, html, rect: range.getBoundingClientRect() };
+    const s = active(w);
+    return {
+      msgId: msg.dataset.msgId, html, rect: range.getBoundingClientRect(),
+      text: String(sel.toString() || '').replace(/\s+/g, ' ').trim().slice(0, 1500),
+      sessionId: s?.id || msg.dataset.sessionId || null, noteId: s?.noteId || null,
+    };
   }
-  function showSelectionBar(w, picked) {
-    hideSelectionBar(w);
-    const bar = document.createElement('div');
-    bar.className = 'chat-selection-bar';
-    bar.innerHTML = '<span>已选中回答片段</span><button type="button">作为批注插入</button>';
-    document.body.appendChild(bar);
-    w.selBar = bar;
-    bar.style.left = U.clamp(picked.rect.left, 8, Math.max(8, window.innerWidth - 220)) + 'px';
-    bar.style.top = Math.max(8, picked.rect.top - 44) + 'px';
-    const btn = bar.querySelector('button');
-    btn.addEventListener('mousedown', e => e.preventDefault());  // 保住选区
-    btn.onclick = () => {
-      appendPartToNote(w, picked.msgId, picked.html);
-      hideSelectionBar(w);
-      window.getSelection()?.removeAllRanges();
+  function sourceOf(w, picked) {
+    const s = active(w);
+    if (!s) return null;
+    const i = s.messages.findIndex(m => m.id === picked.msgId);
+    if (i < 0) return null;
+    const parent = [...s.messages.slice(0, i)].reverse().find(m => m.role === 'user');
+    return {
+      sessionId: s.id, msgId: picked.msgId,
+      question: U.asText(parent?.text || s.title || '').slice(0, 1200),
+      html: picked.html,
     };
   }
   function appendPartToNote(w, msgId, html) {
@@ -213,6 +215,34 @@ window.NoteChat = (() => {
     if (i < 0) return;
     const user = [...s.messages.slice(0, i)].reverse().find(m => m.role === 'user');
     RichAsk.appendToNote(user?.text || s.title || 'AI 回答', user?.selection || s.context?.selection || '', html, s.noteId, s.context?.anchor);
+  }
+  // 嵌套追问：只带来源片段与父问题，不继承父会话的消息/摘要；笔记与锚点沿用父会话
+  function askAboutPart(w, picked) {
+    const source = sourceOf(w, picked) || picked.source;
+    if (!source) return UI.toast('找不到这段回答的来源，请重新选中后再试', 'warn');
+    openWindow({
+      noteId: picked.noteId ?? source.noteId ?? null,
+      selection: picked.text,
+      anchor: active(w)?.context?.anchor || null,
+      source, draft: '',
+    });
+  }
+  function showSelectionBar(w, picked) {
+    hideSelectionBar(w);
+    const bar = document.createElement('div');
+    bar.className = 'chat-selection-bar';
+    bar.innerHTML = '<span>已选中回答片段</span>'
+      + '<button type="button" data-act="ask">针对这段追问</button>'
+      + '<button type="button" data-act="annot">作为批注插入</button>';
+    document.body.appendChild(bar);
+    w.selBar = bar;
+    bar.style.left = U.clamp(picked.rect.left, 8, Math.max(8, window.innerWidth - 330)) + 'px';
+    bar.style.top = Math.max(8, picked.rect.top - 44) + 'px';
+    bar.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('mousedown', e => e.preventDefault());  // 保住选区
+    });
+    bar.querySelector('[data-act="ask"]').onclick = () => { askAboutPart(w, picked); hideSelectionBar(w); window.getSelection()?.removeAllRanges(); };
+    bar.querySelector('[data-act="annot"]').onclick = () => { appendPartToNote(w, picked.msgId, picked.html); hideSelectionBar(w); window.getSelection()?.removeAllRanges(); };
   }
 
   function ensure(w) {
@@ -380,12 +410,13 @@ window.NoteChat = (() => {
         const i = s.messages.indexOf(msg);
         const user = [...s.messages.slice(0, i)].reverse().find(m => m.role === 'user');
         RichAsk.appendToNote(user?.text || 'AI 回答', user?.selection || s.context?.selection || '', content, s.noteId, s.context?.anchor);
-      } else if (op.dataset.act === 'annot-part') {
+      } else if (op.dataset.act === 'annot-part' || op.dataset.act === 'ask-part') {
         const fresh = captureBubbleSelection(w);
         const picked = fresh?.msgId === msg.id ? fresh
           : (w.pendingAnnotation?.msgId === msg.id ? w.pendingAnnotation : null);
-        if (!picked) return UI.toast('请先用鼠标选中回答中的一段文字，再点「选段批注」', 'warn');
-        appendPartToNote(w, picked.msgId, picked.html);
+        if (!picked) return UI.toast('请先用鼠标选中回答中的一段文字，再点对应按钮', 'warn');
+        if (op.dataset.act === 'ask-part') askAboutPart(w, picked);
+        else appendPartToNote(w, picked.msgId, picked.html);
         hideSelectionBar(w);
       } else if (op.dataset.act === 'retry') {
         retry(w, msg.id);
@@ -565,7 +596,7 @@ window.NoteChat = (() => {
         </div>`;
       }
       const answer = U.asText(m.html || m.text || '');
-      return `<div class="chat-msg chat-msg-ai" data-msg-id="${m.id}">
+      return `<div class="chat-msg chat-msg-ai" data-msg-id="${m.id}" data-session-id="${w.activeId}">
         <div class="chat-avatar ai">✒</div>
         <div class="chat-msg-col">
           ${refChips(m.refs)}
@@ -573,6 +604,7 @@ window.NoteChat = (() => {
             `<div class="chat-edit-item ${x.result?.ok ? 'ok' : 'fail'}">${x.result?.ok ? '✓' : '✕'} ${U.esc((x.args && (() => { try { return JSON.parse(x.args).reason || JSON.parse(x.args).action; } catch (_) { return '编辑'; } })()) || '编辑')}${x.result?.error ? ' · ' + U.esc(x.result.error) : ''}</div>`).join('')}</div>` : ''}
           <div class="chat-bubble ai-report">${Sanitize.html(answer)}</div>
           <div class="chat-msg-ops">
+            <button data-act="ask-part" data-id="${m.id}" title="先在回答中选中一段文字">选段追问</button>
             <button data-act="annot-part" data-id="${m.id}" title="先在回答中选中一段文字">选段批注</button>
             <button data-act="append" data-id="${m.id}" title="整段回答作为批注插入">整段批注</button>
             <button data-act="copy" data-id="${m.id}">复制</button>
@@ -653,7 +685,8 @@ window.NoteChat = (() => {
       seen.add(key);
       out.push({ kind: r.kind, id: r.id, title: r.title, desc: r.desc });
     };
-    const allRefs = NoteRefs.all();
+    // 历史对话只认用户显式 @ 引用；不从回答里的《标题》自动挂载，避免旧会话被动回灌
+    const allRefs = NoteRefs.all().filter(r => r.kind !== 'session');
     for (const m of text.matchAll(/《([^《》]{1,80})》/g)) {
       const hit = allRefs.find(r => r.title === m[1]);
       if (hit) push(hit);
@@ -683,6 +716,10 @@ window.NoteChat = (() => {
       const refs = opts.refs || [];
       const refsText = refs.map(r => NoteRefs.resolve(r).text).join('\n\n');
       const globalDigest = NoteRefs.digest();
+      // 嵌套提问：只把用户选中的 AI 回答片段与父问题作为定位上下文，不继承父会话的历史/摘要
+      const source = opts.source || s.context?.source || null;
+      const quotedAnswer = U.asText(source?.html || '').slice(0, 4000);
+      const parentQuestion = U.asText(source?.question || '').slice(0, 800);
       const onRead = {
         search: NoteRefs.search,
         resolve: NoteRefs.resolve,
@@ -698,7 +735,7 @@ window.NoteChat = (() => {
           question,
           history,
           summary: memoryOf(s).summary,
-          refsText, globalDigest, onRead,
+          refsText, globalDigest, onRead, quotedAnswer, parentQuestion,
           noteId: note?.id || '',
           onToolCall: RichAsk.executeNoteEdit,
           onCrud: RichAsk.executeAgentOp,
@@ -710,7 +747,7 @@ window.NoteChat = (() => {
           question,
           history,
           summary: memoryOf(s).summary,
-          refsText, globalDigest, onRead,
+          refsText, globalDigest, onRead, quotedAnswer, parentQuestion,
           noteId: note?.id || '',
         });
       const html = U.asText(res?.html ?? '');
@@ -757,7 +794,7 @@ window.NoteChat = (() => {
     }
     Store.update(COLL, s.id, { messages: s.messages, title: s.title, context: s.context });
     w.els.input.value = '';
-    await generate(w, s, q, selection, { history: s.messages.slice(0, -1), refs });
+    await generate(w, s, q, selection, { history: s.messages.slice(0, -1), refs, source: s.context?.source });
   }
 
   async function retry(w, msgId) {
@@ -801,15 +838,19 @@ window.NoteChat = (() => {
     if (opts.sessionId && Store.find(COLL, opts.sessionId)) {
       w.activeId = opts.sessionId;
     } else if (opts.newSession || !active(w) || (active(w).noteId || null) !== (w.currentNoteId || null)) {
-      const reuse = opts.newSession ? null : latestForNote(w.currentNoteId);
-      w.activeId = (reuse || createSession({ noteId: w.currentNoteId, selection: opts.selection, anchor: opts.anchor })).id;
+      // 不带 sessionId 的打开只复用「空会话」，绝不把上一次问答的消息/摘要带进新提问
+      const reuse = opts.newSession ? null : emptyForNote(w.currentNoteId);
+      w.activeId = (reuse || createSession({
+        noteId: w.currentNoteId, selection: opts.selection, anchor: opts.anchor, source: opts.source || null,
+      })).id;
     }
     const s = active(w);
-    if (s && (opts.selection || opts.anchor)) {
+    if (s && (opts.selection || opts.anchor || opts.source)) {
       s.context = {
         ...(s.context || {}),
         ...(opts.selection ? { selection: String(opts.selection).slice(0, 1200) } : {}),
         ...(opts.anchor ? { anchor: opts.anchor } : {}),
+        ...(opts.source ? { source: opts.source } : {}),
       };
       Store.update(COLL, s.id, { context: s.context });
     }
@@ -858,7 +899,7 @@ window.NoteChat = (() => {
       w.currentNoteId = id || null;
       const s = active(w);
       if (!s || (s.noteId || null) !== w.currentNoteId) {
-        w.activeId = latestForNote(w.currentNoteId)?.id || null;
+        w.activeId = (emptyForNote(w.currentNoteId) || createSession({ noteId: w.currentNoteId })).id;
       }
       renderAll(w);
     });

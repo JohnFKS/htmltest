@@ -136,11 +136,13 @@ test('NoteRefs：search 按关键词命中标题与摘要', () => {
   assert.deepEqual(globalThis.NoteRefs.search('  '), [], '空白关键词返回空');
 });
 
-test('NoteRefs：digest 生成全局清单，agent 借此感知项目全部内容', () => {
+test('NoteRefs：digest 生成全局清单，但历史对话只报数量不注入内容', () => {
   const d = globalThis.NoteRefs.digest();
   assert.match(d, /【笔记 · 1 条】/);
   assert.match(d, /@bank:bank_a/);
-  assert.match(d, /@session:chat_a/);
+  assert.match(d, /【历史对话 · 1 条】/, '对话应仍可被感知，但不自动带出内容');
+  assert.doesNotMatch(d, /@session:chat_a/, '不能把上一次问答标题/末条消息塞进每次提问的上下文');
+  assert.doesNotMatch(d, /关于极限的讨论/, '历史会话标题不应被动回灌');
 });
 
 test('NoteRefs：resolve 输出类型标注全文；失效引用与超预算截断有明确标记', () => {
@@ -418,4 +420,39 @@ test('note-chat：AI 回答选段批注（源码契约）', () => {
   assert.match(src, /appendPartToNote\(w, picked\.msgId, picked\.html\)/, '应只把选中片段交给批注写入');
   const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
   assert.match(css, /\.chat-selection-bar/, '浮动操作条应有样式');
+});
+
+// ---------- 嵌套提问 / 记忆隔离 ----------
+test('note-chat：AI 回答选段追问带来源上下文且新开会话（源码契约）', () => {
+  const chat = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
+  assert.ok(chat.includes('data-session-id="${w.activeId}"'), '回答节点应带来源会话 ID');
+  assert.ok(chat.includes('data-act="ask-part"'), '消息操作区应有选段追问入口');
+  assert.match(chat, /function sourceOf\(w, picked\)/, '应从回答气泡提取父问题与片段');
+  assert.match(chat, /function askAboutPart\(w, picked\)/, '应支持针对片段新开会话');
+  assert.ok(chat.includes('openWindow({'), '选段追问应走独立新窗口');
+  assert.ok(chat.includes('quotedAnswer'), '应把选中片段送入模型上下文');
+  assert.ok(chat.includes('parentQuestion'), '应把父问题送入模型上下文');
+  assert.ok(chat.includes('s.context?.source'), '来源上下文应随会话持久化');
+  assert.ok(chat.includes("filter(r => r.kind !== 'session')"), '不得从回答标题自动挂载历史会话引用');
+  const ask = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
+  assert.match(ask, /针对这段 AI 回答追问/, '右键菜单应提示嵌套追问');
+  assert.ok(ask.includes('...(sel.source ? { source: sel.source } : {})'), '右键嵌套提问应透传来源');
+});
+
+test('prompts/provider：嵌套片段与记忆边界进入上下文（源码契约）', () => {
+  const prompts = readFileSync(path.join(ROOT, 'js/ai/prompts.js'), 'utf8');
+  assert.ok(prompts.includes('{quotedAnswer}') && prompts.includes('{parentQuestion}'), '助教模板应含嵌套提问占位符');
+  assert.ok(prompts.includes('它不是学生笔记原文，也不是已确认事实'), '应明确 AI 片段不是学生结论');
+  assert.match(prompts, /记忆边界：只使用本会话的历史\/摘要/, '应声明跨会话记忆隔离');
+  assert.ok(prompts.includes('不得跨会话并入记忆'), '压缩提示词不得混入其他会话');
+  const provider = readFileSync(path.join(ROOT, 'js/ai/provider.js'), 'utf8');
+  assert.ok(provider.includes('quotedAnswer = \'\', parentQuestion = \'\''), 'ctxChat 应接收嵌套上下文参数');
+  assert.ok(provider.includes('quotedAnswer: U.asText(quotedAnswer || \'\').slice(0, 4000)'), '填充模板时应截断嵌套片段');
+});
+
+test('note-chat：打开笔记助教不复用带历史的旧会话（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
+  assert.match(src, /const emptyForNote = id => all\(\)\.find/, '应只复用空会话');
+  assert.ok(src.includes('opts.newSession ? null : emptyForNote(w.currentNoteId)'), '普通打开不得加载上次问答');
+  assert.ok(src.includes('(emptyForNote(w.currentNoteId) || createSession({ noteId: w.currentNoteId })).id'), '切换笔记也应避免复用旧记忆');
 });
