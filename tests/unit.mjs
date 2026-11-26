@@ -387,6 +387,29 @@ test('笔记目录：界面结构、自动刷新与折叠样式（源码契约�
   assert.match(js, /scroll-behavior:smooth/, '导出的章节跳转应平滑滚动');
 });
 
+test('笔记工作台：重点标记 / 小刷子色板 / 阅读位置 / 置顶（源码契约）', () => {
+  const js = readFileSync(path.join(ROOT, 'js/views/notes.js'), 'utf8');
+  for (const id of ['note-pin', 'note-go-top', 'note-go-last', 'note-key-section', 'note-read-chip']) {
+    assert.ok(js.includes(`id="${id}"`), `缺少界面元素 ${id}`);
+  }
+  assert.match(js, /const markImportance = level =>/, '应提供三级重点标记逻辑');
+  assert.match(js, /const READ_KEY = id => `note\.readpos\.\$\{id\}`/, '阅读位置应按笔记记忆');
+  assert.ok(js.includes('data-custom'), '色板应提供自定义颜色入口');
+  for (const key of ['HL_COLORS', 'FG_COLORS']) {
+    const block = js.match(new RegExp(`const ${key} = \\[([\\s\\S]*?)\\];`));
+    assert.ok(block, `缺少 ${key} 色板`);
+    assert.equal((block[1].match(/\{ c: /g) || []).length, 16, `${key} 应有 16 种颜色`);
+  }
+  const icons = readFileSync(path.join(ROOT, 'js/core/icons.js'), 'utf8');
+  for (const name of ['brush', 'brushHighlight', 'priority1', 'priority2', 'priority3', 'pin', 'arrowUp', 'bookmark']) {
+    assert.ok(icons.includes(`${name}:`), `图标集缺少 ${name}`);
+  }
+  const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  for (const sel of ['.rich > .imp-1', '.note-key-item.active', '.note-read-chip', '.note-item .note-pin.on', '.tb-color-custom']) {
+    assert.ok(css.includes(sel), `样式缺少 ${sel}`);
+  }
+});
+
 // ---------- AI 助教：多窗口 / 缩小续答 / 选段批注 ----------
 test('note-chat：多窗口并发，每个窗口独立会话与发送状态（源码契约）', () => {
   const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');

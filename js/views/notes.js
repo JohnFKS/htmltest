@@ -17,6 +17,10 @@ Views.notes = {
             <div class="note-editor-head">
               <input class="note-title-input" id="note-title" placeholder="笔记标题…">
               <div class="note-head-actions">
+                <button class="btn btn-ghost btn-sm" id="note-pin" title="置顶当前笔记（置顶笔记排在列表最前）">${Icon.svg('pin', 14)} <span>置顶</span></button>
+                <button class="btn btn-ghost btn-sm" id="note-go-top" title="回到笔记开头">${Icon.svg('arrowUp', 14)} 开头</button>
+                <button class="btn btn-ghost btn-sm" id="note-go-last" title="回到上次阅读位置">${Icon.svg('bookmark', 14)} 上次位置</button>
+                <span class="note-head-sep"></span>
                 <button class="btn btn-primary btn-sm" id="note-save" title="保存为一个版本（Ctrl+S）">${Icon.svg('save', 14)} 保存</button>
                 <button class="btn btn-ghost btn-sm" id="note-history" title="查看/恢复历史版本，永久保存或删除">${Icon.svg('history', 14)} 历史</button>
                 <button class="btn btn-ghost btn-sm" id="note-autosave" title="设置自动保存间隔与版本保留数量">${Icon.svg('settings', 14)} 保存设置</button>
@@ -42,13 +46,19 @@ Views.notes = {
               </div>
               <div class="note-toc-body">
                 <div class="note-toc-list" id="note-toc-list"></div>
+                <div class="note-key-section" id="note-key-section" hidden>
+                  <div class="note-toc-label">重点模块 <em id="note-key-count">0</em></div>
+                  <div class="note-key-list" id="note-key-list"></div>
+                </div>
                 <div class="note-toc-foot">
-                  <button type="button" data-act="top" title="回到顶部">回到顶部</button>
+                  <button type="button" data-act="top" title="回到笔记开头">回到开头</button>
+                  <button type="button" data-act="last" title="回到上次阅读位置">上次位置</button>
                   <button type="button" data-act="fold" title="展开/收起全部折叠块">展开折叠</button>
                   <button type="button" data-act="copy" title="复制章节大纲">复制大纲</button>
                 </div>
               </div>
             </aside>
+            <button type="button" class="note-read-chip" id="note-read-chip" title="点击回到上次阅读位置" hidden></button>
           </div>
           <div class="muted" style="margin-top:8px" id="note-status"></div>
         </div>
@@ -61,7 +71,8 @@ Views.notes = {
     const editor = container.querySelector('#editor-area');
     const titleInput = container.querySelector('#note-title');
     this._search = '';
-    this.currentId = this.currentId && Store.find('notes', this.currentId) ? this.currentId : (notes[0]?.id || null);
+    const initialNote = [...notes].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))[0];
+    this.currentId = this.currentId && Store.find('notes', this.currentId) ? this.currentId : (initialNote?.id || null);
 
     // ---------- 悬浮目录：自动提取 H1-H3，滚动高亮，点击跳转，折叠状态本地记忆 ----------
     const tocEl = container.querySelector('#note-toc');
@@ -70,9 +81,64 @@ Views.notes = {
     const tocToggleBtn = container.querySelector('#note-toc-toggle');
     const foldBtn = tocEl.querySelector('[data-act="fold"]');
     const progressEl = container.querySelector('#note-scroll-progress');
+    const keySectionEl = container.querySelector('#note-key-section');
+    const keyListEl = container.querySelector('#note-key-list');
+    const keyCountEl = container.querySelector('#note-key-count');
+    const readChipEl = container.querySelector('#note-read-chip');
     const TOC_KEY = 'note.toc.collapsed';
-    let tocTargets = [], tocActive = -1, tocCollapsed = false;
+    const READ_KEY = id => `note.readpos.${id}`;
+    const getReadPos = id => {
+      try { return Math.max(0, Number(localStorage.getItem(READ_KEY(id))) || 0); }
+      catch (e) { return 0; }
+    };
+    const setReadPos = (id, top) => {
+      if (!id) return;
+      try { localStorage.setItem(READ_KEY(id), String(Math.max(0, Math.round(top)))); }
+      catch (e) { /* 隐私模式忽略 */ }
+    };
+    const read = { top: 0, locked: false };
+    let tocTargets = [], tocActive = -1, keyTargets = [], keyActive = -1, tocCollapsed = false;
     try { tocCollapsed = localStorage.getItem(TOC_KEY) === '1'; } catch (e) { /* 隐私模式忽略 */ }
+
+    const persistScroll = U.debounce(top => {
+      if (this.currentId && !read.locked) setReadPos(this.currentId, top);
+    }, 400);
+    const jumpTo = (top, msg) => {
+      read.locked = true;
+      editor.scrollTo({ top: Math.max(0, Number(top) || 0), behavior: 'smooth' });
+      UI.toast(msg);
+      setTimeout(() => { read.locked = false; }, 900);
+    };
+    const goLast = () => {
+      const top = getReadPos(this.currentId);
+      if (!top) return UI.toast('这篇笔记还没有记录阅读位置', 'warn');
+      jumpTo(top, '已回到上次阅读位置');
+    };
+    const setKeyActive = i => {
+      if (i === keyActive) return;
+      keyListEl.querySelectorAll('.note-key-item').forEach((el, j) => el.classList.toggle('active', j === i));
+      keyActive = i;
+    };
+    const updateKeyActive = () => {
+      if (!keyTargets.length) return setKeyActive(-1);
+      const line = editor.getBoundingClientRect().top + 48;
+      let idx = -1;
+      keyTargets.forEach((el, i) => { if (el.getBoundingClientRect().top <= line) idx = i; });
+      setKeyActive(idx);
+    };
+    const updateReadChip = () => {
+      if (!readChipEl) return;
+      readChipEl.hidden = !this.currentId;
+      if (!this.currentId) return;
+      const range = editor.scrollHeight - editor.clientHeight;
+      const pct = range > 0 ? Math.round(U.clamp(editor.scrollTop / range, 0, 1) * 100) : 100;
+      const line = editor.getBoundingClientRect().top + 48;
+      const current = [...tocTargets].reverse().find(h => h.getBoundingClientRect().top <= line);
+      const full = current ? ((current.textContent || '').trim() || '未命名标题') : '开头';
+      const label = full.length > 10 ? full.slice(0, 10) + '…' : full;
+      readChipEl.innerHTML = `${Icon.svg('bookmark', 12)} ${pct}% · ${U.esc(label)}`;
+    };
+    readChipEl.onclick = goLast;
 
     const setTocActive = i => {
       if (i === tocActive) return;
@@ -111,10 +177,33 @@ Views.notes = {
           setTimeout(() => target.classList.remove('toc-flash'), 1100);
         };
       });
+      keyTargets = [...editor.children].filter(el =>
+        el.nodeType === Node.ELEMENT_NODE && /(^|\s)imp-[123](\s|$)/.test(el.className || ''));
+      keyActive = -1;
+      keyCountEl.textContent = String(keyTargets.length);
+      keySectionEl.hidden = !keyTargets.length;
+      keyListEl.innerHTML = keyTargets.map((el, i) => {
+        const level = (el.classList.contains('imp-3') ? '3' : el.classList.contains('imp-2') ? '2' : '1');
+        const full = ((el.textContent || '').trim() || '未命名模块').replace(/\s+/g, ' ');
+        const label = full.length > 18 ? full.slice(0, 18) + '…' : full;
+        return `<button type="button" class="note-key-item" data-i="${i}" title="${U.esc(full)}"><span class="note-key-badge k${level}">${level}</span><span>${U.esc(label)}</span></button>`;
+      }).join('');
+      keyListEl.querySelectorAll('.note-key-item').forEach(btn => {
+        btn.onclick = () => {
+          const i = +btn.dataset.i, target = keyTargets[i];
+          if (!target) return;
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setKeyActive(i);
+          target.classList.add('toc-flash');
+          setTimeout(() => target.classList.remove('toc-flash'), 1100);
+        };
+      });
       const blocks = [...editor.querySelectorAll('details')];
       foldBtn.textContent = blocks.length && blocks.every(d => d.open) ? '收起折叠' : '展开折叠';
       updateTocActive();
+      updateKeyActive();
       updateProgress();
+      updateReadChip();
     };
     const setTocCollapsed = collapsed => {
       tocCollapsed = collapsed;
@@ -128,7 +217,8 @@ Views.notes = {
     tocEl.querySelector('#note-toc-fold-btn').onclick = () => setTocCollapsed(true);
     tocEl.querySelectorAll('.note-toc-foot button').forEach(btn => {
       btn.onclick = () => {
-        if (btn.dataset.act === 'top') { editor.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+        if (btn.dataset.act === 'top') { jumpTo(0, '已回到笔记开头'); return; }
+        if (btn.dataset.act === 'last') { goLast(); return; }
         if (btn.dataset.act === 'fold') {
           const blocks = [...editor.querySelectorAll('details')];
           const open = blocks.some(d => !d.open);
@@ -145,11 +235,17 @@ Views.notes = {
         }
       };
     });
-    editor.addEventListener('scroll', () => { updateTocActive(); updateProgress(); });
+    container.querySelector('#note-go-top').onclick = () => jumpTo(0, '已回到笔记开头');
+    container.querySelector('#note-go-last').onclick = goLast;
+    editor.addEventListener('scroll', () => {
+      updateTocActive(); updateKeyActive(); updateProgress(); updateReadChip();
+      read.top = editor.scrollTop;
+      persistScroll(read.top);
+    });
     const tocObserver = new MutationObserver(U.debounce(refreshToc, 200));
-    tocObserver.observe(editor, { childList: true, subtree: true, characterData: true });
+    tocObserver.observe(editor, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
     setTocCollapsed(tocCollapsed);
-    this._toc = { refresh: refreshToc, update: updateProgress };
+    this._toc = { refresh: refreshToc, update: updateProgress, chip: updateReadChip };
 
     // ---------- 保存状态 / 版本历史 ----------
     const notesCfg = () => Store.config.notes || { autoSaveSec: 60, maxVersions: 20 };
@@ -174,24 +270,53 @@ Views.notes = {
       return safe.slice(0, i) + '<mark>' + safe.slice(i, i + U.esc(q).length) + '</mark>' + safe.slice(i + U.esc(q).length);
     };
 
+    const pinBtn = container.querySelector('#note-pin');
+    const syncPinBtn = () => {
+      const n = this.currentId ? Store.find('notes', this.currentId) : null;
+      const on = !!n?.pinned;
+      pinBtn.classList.toggle('on', on);
+      pinBtn.querySelector('span').textContent = on ? '取消置顶' : '置顶';
+      pinBtn.title = on ? '取消置顶当前笔记' : '置顶当前笔记（排在列表最前）';
+    };
+    const togglePin = id => {
+      const n = Store.find('notes', id);
+      if (!n) return;
+      Store.update('notes', id, { pinned: !n.pinned });
+      UI.toast(n.pinned ? '已取消置顶' : '已置顶笔记', 'success');
+      syncPinBtn();
+      renderList();
+    };
+    pinBtn.onclick = () => {
+      if (this.currentId) togglePin(this.currentId);
+      else UI.toast('请先选择一篇笔记', 'warn');
+    };
+
     const renderList = () => {
       let notes2 = Store.coll('notes');
       if (!notes2.length) { listEl.innerHTML = UI.emptyState('还没有笔记，点上方「新建笔记」'); return; }
-      // 本地全文搜索：标题 + 正文纯文本（大小写不敏感），结果按相关度粗排（标题命中优先）
+      // 本地全文搜索：标题 + 正文纯文本（大小写不敏感），结果按相关度粗排（标题命中优先）；置顶永远在前
+      const pinFirst = arr => arr.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
       const q = this._search.trim().toLowerCase();
       if (q) {
         const hit = n => (n.title || '').toLowerCase().includes(q) || U.stripHtml(n.content || '').toLowerCase().includes(q);
-        notes2 = notes2.filter(hit).sort((a, b) =>
-          (b.title || '').toLowerCase().includes(q) - (a.title || '').toLowerCase().includes(q));
+        notes2 = pinFirst(notes2.filter(hit).sort((a, b) =>
+          (b.title || '').toLowerCase().includes(q) - (a.title || '').toLowerCase().includes(q)));
+      } else {
+        notes2 = pinFirst([...notes2]);
       }
       if (!notes2.length) { listEl.innerHTML = UI.emptyState(`没有匹配「${this._search}」的笔记`); return; }
       listEl.innerHTML = notes2.map(n => `
-        <div class="note-item ${n.id === this.currentId ? 'active' : ''}" data-id="${n.id}">
-          <div class="note-item-title">${this._highlight(n.title || '无标题', q)}</div>
+        <div class="note-item ${n.id === this.currentId ? 'active' : ''} ${n.pinned ? 'is-pinned' : ''}" data-id="${n.id}">
+          <div class="note-item-title">${n.pinned ? `<span class="note-pin-mark" title="已置顶">${Icon.svg('pin', 12)}</span>` : ''}${this._highlight(n.title || '无标题', q)}</div>
           <div class="note-item-sub">${U.fmt(n.updatedAt || n.createdAt)}</div>
+          <button class="note-pin${n.pinned ? ' on' : ''}" data-pin="${n.id}" title="${n.pinned ? '取消置顶这篇笔记' : '置顶这篇笔记'}">${Icon.svg('pin', 13)}</button>
           <button class="note-del" data-del="${n.id}" title="删除这篇笔记">删除</button>
         </div>`).join('');
       listEl.querySelectorAll('.note-item').forEach(el => el.onclick = () => this.open(el.dataset.id, editor, titleInput));
+      listEl.querySelectorAll('[data-pin]').forEach(btn => btn.onclick = e => {
+        e.stopPropagation();
+        togglePin(btn.dataset.pin);
+      });
       listEl.querySelectorAll('[data-del]').forEach(btn => btn.onclick = async e => {
         e.stopPropagation();
         const id = btn.dataset.del;
@@ -219,6 +344,8 @@ Views.notes = {
 
     // ---------- 打开 ----------
     this.open = (id, edEl, tEl) => {
+      const prevId = this.currentId;
+      if (prevId && prevId !== id) setReadPos(prevId, edEl.scrollTop);
       this.currentId = id;
       dirty = false;
       lastEditAt = 0;
@@ -227,18 +354,26 @@ Views.notes = {
       if (!n) return;
       edEl.innerHTML = n.content || '';
       tEl.value = n.title || '';
-      edEl.scrollTop = 0;
+      const stored = getReadPos(id);
+      edEl.scrollTop = stored;
+      read.top = stored;
       refreshToc();
       // 切换笔记时清空撤销历史，同步基线快照
       undoStack.length = 0; redoStack.length = 0; lastSnap = takeSnap();
+      syncPinBtn();
       this.updateStatus();
       renderList();
       window.NoteChat?.onNoteChange?.(id);
+      requestAnimationFrame(() => {
+        edEl.scrollTop = stored;
+        updateTocActive(); updateKeyActive(); updateProgress(); updateReadChip();
+        if (stored > 0 && prevId !== id) UI.toast('已恢复到上次阅读位置');
+      });
     };
 
     // ---------- 新建 ----------
     container.querySelector('#note-new').onclick = () => {
-      const n = Store.insert('notes', { id: U.uid('note'), title: '未命名笔记', content: '<p></p>', createdAt: U.now(), updatedAt: U.now() });
+      const n = Store.insert('notes', { id: U.uid('note'), title: '未命名笔记', content: '<p></p>', pinned: false, createdAt: U.now(), updatedAt: U.now() });
       this.currentId = n.id;
       this.open(n.id, editor, titleInput);
       titleInput.focus(); titleInput.select();
@@ -250,7 +385,10 @@ Views.notes = {
       Store.update('notes', this.currentId, { title: titleInput.value.trim() || '未命名笔记', content: editor.innerHTML });
       this.updateStatus();
       const item = listEl.querySelector(`.note-item[data-id="${this.currentId}"] .note-item-title`);
-      if (item) item.textContent = titleInput.value.trim() || '未标题';
+      if (item) {
+        const mark = item.querySelector('.note-pin-mark')?.outerHTML || '';
+        item.innerHTML = mark + U.esc(titleInput.value.trim() || '未标题');
+      }
     };
     const debouncedSave = U.debounce(saveDraft, 600);
     const afterEdit = () => { markDirty(); debouncedSave(); };
@@ -616,6 +754,9 @@ a{color:#2d6a4f}mark{padding:1px 2px;border-radius:3px}del,s{color:#8d8677}sup,s
 .todo-list{list-style:none;padding-left:6px}.todo-list li{display:flex;align-items:baseline;gap:8px;margin:4px 0}
 details{border:1px solid #e6e1d3;border-radius:7px;padding:8px 14px;margin:10px 0}summary{cursor:pointer;font-weight:600}
 hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
+.imp-1{border-left:3px solid #2b8a3e;padding-left:10px;background:rgba(43,138,62,.06);border-radius:0 6px 6px 0}
+.imp-2{border-left:3px solid #e67700;padding-left:10px;background:rgba(230,119,0,.07);border-radius:0 6px 6px 0}
+.imp-3{border-left:3px solid #d9480f;padding-left:10px;background:rgba(217,72,15,.08);border-radius:0 6px 6px 0}
 .export-toc{position:fixed;right:18px;top:18px;z-index:9;width:230px;max-height:70vh;overflow:auto;background:#fffef9;box-shadow:0 6px 28px rgba(38,35,29,.16);padding:8px 12px;font-size:13px}
 .export-toc summary{color:#2d6a4f;font-weight:700}.export-toc nav{display:flex;flex-direction:column;margin-top:6px;padding-top:6px;border-top:1px solid #e6e1d3}
 .export-toc nav a{display:block;padding:3px 6px;border-radius:5px;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#5c564a}
@@ -629,7 +770,7 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
     else if (notes.length === 0) {
       // 首次使用引导笔记
       const welcome = Store.insert('notes', {
-        id: U.uid('note'), title: '欢迎使用智学笔记', createdAt: U.now(), updatedAt: U.now(),
+        id: U.uid('note'), title: '欢迎使用智学笔记', pinned: false, createdAt: U.now(), updatedAt: U.now(),
         content: Sanitize.html(`<h2>这是一份 HTML 原生笔记</h2>
 <p>富文本的一切都可用：<b>加粗</b>、<i>斜体</i>、表格、折叠块、代码块、待办清单，还能插入截图批注产物。</p>
 <h3>数学公式</h3><p>行内公式如 $E=mc^2$，块级公式如 $$\\int_a^b f(x)dx = F(b)-F(a)$$（需安装本地 KaTeX，见设置页）。</p>
@@ -699,14 +840,54 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
     // 让 color/hiliteColor 产出稳定的内联 style（而非 font 标签），消毒与导出都能保留
     const useCss = () => { try { document.execCommand('styleWithCSS', false, true); } catch (e) { /* 老浏览器忽略 */ } };
 
+    // 三级重点：给选中（或光标所在）的顶层模块打 class，目录里生成可跳转的重点列表
+    const IMP_CLASSES = ['imp-1', 'imp-2', 'imp-3'];
+    const topBlockOf = node => {
+      if (node === editor) return editor.firstElementChild;
+      let el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+      while (el && el.parentElement !== editor) el = el.parentElement;
+      return el && el.parentElement === editor ? el : null;
+    };
+    const levelOf = el => Number(el?.className.match(/imp-([123])/)?.[1] || 0);
+    const markImportance = level => {
+      const sel = window.getSelection();
+      let blocks = [];
+      if (sel && sel.rangeCount && editor.contains(sel.anchorNode)) {
+        const range = sel.getRangeAt(0);
+        const start = topBlockOf(range.startContainer), end = topBlockOf(range.endContainer);
+        const kids = [...editor.children];
+        const si = kids.indexOf(start), ei = kids.indexOf(end);
+        if (si >= 0 && ei >= 0) blocks = kids.slice(Math.min(si, ei), Math.max(si, ei) + 1);
+      }
+      if (!blocks.length) {
+        const block = topBlockOf(document.activeElement === editor ? sel?.anchorNode : editor.firstElementChild);
+        if (block) blocks = [block];
+      }
+      if (!blocks.length) return UI.toast('请先选中要标记的模块，或把光标放在模块内', 'warn');
+      const current = blocks.length === 1 ? levelOf(blocks[0]) : 0;
+      blocks.forEach(el => {
+        el.classList.remove(...IMP_CLASSES);
+        if (current !== level) el.classList.add(`imp-${level}`);
+      });
+      this._toc?.refresh?.();
+      UI.toast(current === level ? '已取消重点标记' : `已标记为 ${level} 级重点`, 'success');
+    };
+
     const HL_COLORS = [
-      { c: '#fff2a8', n: '黄' }, { c: '#d7f5e3', n: '绿' }, { c: '#d7eaff', n: '蓝' },
-      { c: '#ffd9e6', n: '粉' }, { c: '#e7dcff', n: '紫' }, { c: '#ffe0bf', n: '橙' },
-      { c: '#eceae4', n: '灰' }, { c: 'transparent', n: '清除高亮' },
+      { c: '#fff2a8', n: '浅黄' }, { c: '#ffe599', n: '杏黄' }, { c: '#ffd6a5', n: '浅橙' },
+      { c: '#ffc9c9', n: '浅红' }, { c: '#ffd9e6', n: '浅粉' }, { c: '#e7dcff', n: '浅紫' },
+      { c: '#d7eaff', n: '浅蓝' }, { c: '#c8f0e8', n: '浅青' }, { c: '#d7f5e3', n: '浅绿' },
+      { c: '#e8f4c7', n: '浅草绿' }, { c: '#eceae4', n: '浅灰' }, { c: '#f5e6d3', n: '米色' },
+      { c: '#b8e0ff', n: '天蓝' }, { c: '#ffb3b3', n: '珊瑚红' }, { c: '#c9b6ff', n: '薰衣草' },
+      { c: 'transparent', n: '清除高亮' },
     ];
     const FG_COLORS = [
-      { c: '#26231d', n: '墨色' }, { c: '#bc4b2a', n: '朱红' }, { c: '#2d6a4f', n: '墨绿' },
-      { c: '#3457d5', n: '蓝' }, { c: '#b98a2f', n: '金' }, { c: '#8d8677', n: '灰' },
+      { c: '#26231d', n: '墨色' }, { c: '#5c564a', n: '深灰' }, { c: '#8d8677', n: '灰' },
+      { c: '#bc4b2a', n: '朱红' }, { c: '#d9480f', n: '橘红' }, { c: '#e03131', n: '红' },
+      { c: '#b98a2f', n: '金' }, { c: '#e67700', n: '橙' }, { c: '#2d6a4f', n: '墨绿' },
+      { c: '#2b8a3e', n: '绿' }, { c: '#087f5b', n: '青绿' }, { c: '#3457d5', n: '蓝' },
+      { c: '#1c7ed6', n: '天蓝' }, { c: '#6741d9', n: '紫' }, { c: '#9c36b5', n: '品红' },
+      { c: '#495057', n: '石板灰' },
     ];
 
     const tools = [
@@ -718,10 +899,14 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
       { icon: 'underline', title: '下划线 (Ctrl+U)', cmd: () => exec('underline') },
       { icon: 'strike', title: '删除线', cmd: () => exec('strikeThrough') },
       { sep: true },
-      { icon: 'highlight', title: '彩色高亮', palette: 'hl' },
-      { icon: 'textColor', title: '文字颜色', palette: 'fg' },
+      { icon: 'brushHighlight', title: '高亮小刷子：16 色 + 自定义颜色', palette: 'hl', cls: 'tb-brush-hl' },
+      { icon: 'brush', title: '文字颜色小刷子：16 色 + 自定义颜色', palette: 'fg', cls: 'tb-brush-fg' },
       { icon: 'sup', title: '上标', cmd: () => exec('superscript') },
       { icon: 'sub', title: '下标', cmd: () => exec('subscript') },
+      { sep: true },
+      { icon: 'priority1', title: '把选中模块标为 1 级重点（再次点击取消）', cmd: () => markImportance(1), cls: 'tb-priority p1' },
+      { icon: 'priority2', title: '把选中模块标为 2 级重点（再次点击取消）', cmd: () => markImportance(2), cls: 'tb-priority p2' },
+      { icon: 'priority3', title: '把选中模块标为 3 级重点（再次点击取消）', cmd: () => markImportance(3), cls: 'tb-priority p3' },
       { sep: true },
       { icon: 'h1', title: '标题1', cmd: () => exec('formatBlock', 'h1') },
       { icon: 'h2', title: '标题2', cmd: () => exec('formatBlock', 'h2') },
@@ -764,28 +949,51 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
 
     bar.innerHTML = tools.map((t, i) => t.sep
       ? '<span class="tb-sep"></span>'
-      : `<button type="button" class="tb-btn${t.palette ? ' tb-palette-btn' : ''}" data-i="${i}" title="${t.title}" aria-label="${t.title}">${icon(t.icon)}</button>`
+      : `<button type="button" class="tb-btn${t.palette ? ' tb-palette-btn' : ''}${t.cls ? ' ' + t.cls : ''}" data-i="${i}" title="${t.title}" aria-label="${t.title}">${icon(t.icon)}</button>`
     ).join('') + '<div class="tb-popover" hidden></div>';
 
     const popover = bar.querySelector('.tb-popover');
     const closePop = () => { popover.hidden = true; };
+    const RECENT_KEY = kind => `note.color.recent.${kind}`;
+    const getRecent = kind => {
+      try {
+        const arr = JSON.parse(localStorage.getItem(RECENT_KEY(kind)) || '[]');
+        return Array.isArray(arr) ? arr.filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 8) : [];
+      } catch (e) { return []; }
+    };
+    const addRecent = (kind, color) => {
+      if (!/^#[0-9a-f]{6}$/i.test(color)) return;
+      const list = [color, ...getRecent(kind).filter(c => c !== color)].slice(0, 8);
+      try { localStorage.setItem(RECENT_KEY(kind), JSON.stringify(list)); } catch (e) { /* 忽略 */ }
+    };
+    const applyColor = (kind, color) => {
+      useCss();
+      exec(kind === 'hl' ? 'hiliteColor' : 'foreColor', color);
+      if (color !== 'transparent') addRecent(kind, color);
+      closePop();
+      save();
+    };
+    const swatchHtml = (color, name, cls = '') =>
+      `<button type="button" class="tb-swatch${cls}" data-color="${color}" title="${U.esc(name)}" style="--sw:${color === 'transparent' ? '#fff' : color}"></button>`;
     const openPop = (kind, btn) => {
       if (!popover.hidden && popover.dataset.kind === kind) { closePop(); return; }
       popover.dataset.kind = kind;
       const list = kind === 'hl' ? HL_COLORS : FG_COLORS;
-      popover.innerHTML = `<div class="tb-pop-title">${kind === 'hl' ? '高亮颜色' : '文字颜色'}</div>`
-        + `<div class="tb-swatches">${list.map(x =>
-          `<button type="button" class="tb-swatch${x.c === 'transparent' ? ' swatch-clear' : ''}" data-color="${x.c}" title="${x.n}" style="--sw:${x.c === 'transparent' ? '#fff' : x.c}"></button>`).join('')}</div>`;
+      const recent = getRecent(kind);
+      popover.innerHTML = `<div class="tb-pop-title">${kind === 'hl' ? '高亮小刷子 · 16 色' : '文字颜色小刷子 · 16 色'}</div>`
+        + `<div class="tb-swatches">${list.map(x => swatchHtml(x.c, x.n, x.c === 'transparent' ? ' swatch-clear' : '')).join('')}</div>`
+        + (recent.length ? `<div class="tb-pop-title tb-pop-sub">最近使用</div><div class="tb-swatches">${recent.map(c => swatchHtml(c, c, ' swatch-recent')).join('')}</div>` : '')
+        + `<div class="tb-color-custom"><span>自定义${kind === 'hl' ? '高亮' : '文字'}色</span>`
+        + `<input type="color" data-custom value="${kind === 'hl' ? '#fff2a8' : '#bc4b2a'}" title="选择任意颜色">`
+        + `<button type="button" data-apply>应用</button></div>`;
       const br = btn.getBoundingClientRect(), pr = bar.getBoundingClientRect();
-      popover.style.left = Math.max(0, Math.min(br.left - pr.left, pr.width - 188)) + 'px';
+      popover.style.left = Math.max(0, Math.min(br.left - pr.left, pr.width - 228)) + 'px';
       popover.hidden = false;
-      popover.querySelectorAll('.tb-swatch').forEach(sw => {
-        sw.onclick = () => {
-          useCss();
-          exec(kind === 'hl' ? 'hiliteColor' : 'foreColor', sw.dataset.color);
-          closePop();
-        };
+      popover.querySelectorAll('[data-color]').forEach(sw => {
+        sw.onclick = () => applyColor(kind, sw.dataset.color);
       });
+      const custom = popover.querySelector('[data-custom]');
+      popover.querySelector('[data-apply]').onclick = () => applyColor(kind, custom.value);
     };
 
     bar.querySelectorAll('.tb-btn').forEach(btn => {

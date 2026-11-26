@@ -312,15 +312,25 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
   border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface);
   color: var(--ink-3); cursor: pointer; font-family: var(--font); opacity: 0; transition: opacity .12s;
 }
-.note-item:hover .note-del { opacity: 1; }
+.note-item:hover .note-del, .note-item:hover .note-pin, .note-item .note-pin.on { opacity: 1; }
 .note-del:hover { color: var(--danger); border-color: var(--danger); }
+.note-item .note-pin {
+  position: absolute; right: 44px; top: 8px; padding: 1px 4px; font-size: 11px;
+  border: 1px solid transparent; border-radius: 999px; background: var(--surface);
+  color: var(--ink-3); cursor: pointer; opacity: 0; transition: opacity .12s, color .12s;
+}
+.note-item .note-pin:hover { color: var(--gold); border-color: var(--line-2); }
+.note-item .note-pin.on { color: var(--gold); background: rgba(189, 139, 63, .1); }
+#note-pin.on { color: var(--gold); background: rgba(189, 139, 63, .1); }
 .note-item {
   padding: 11px 13px; border-radius: var(--radius-sm); cursor: pointer;
   border: 1px solid transparent; margin-bottom: 6px;
 }
 .note-item:hover { background: var(--surface-2); }
 .note-item.active { background: var(--surface); border-color: var(--line); box-shadow: var(--shadow); }
-.note-item-title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note-item.is-pinned { background: rgba(189, 139, 63, .05); }
+.note-item-title { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 72px; }
+.note-pin-mark { display: inline-flex; vertical-align: -2px; margin-right: 4px; color: var(--gold); }
 .note-item-sub { color: var(--ink-3); font-size: 12px; margin-top: 2px; }
 .notes-editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 /* 工具栏固定在编辑区顶部：父容器 .notes-editor 不滚动（仅 editor-area 内部滚动），
@@ -358,22 +368,32 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 .tb-btn:hover { background: var(--surface-2); color: var(--primary); }
 .tb-btn.on { background: var(--primary-soft); color: var(--primary); }
 .tb-palette-btn { color: var(--accent); }
+.tb-brush-hl { color: #e67700; }
+.tb-brush-fg { color: #bc4b2a; }
+.tb-priority.p1 { color: #2b8a3e; }
+.tb-priority.p2 { color: #e67700; }
+.tb-priority.p3 { color: #d9480f; }
 .tb-sep { width: 1px; background: var(--line); margin: 4px 3px; }
-/* 高亮 / 文字颜色悬浮色板 */
+/* 高亮 / 文字颜色悬浮色板（小刷子） */
 .tb-popover {
   position: absolute; top: calc(100% - 2px); left: 0; z-index: 40;
-  width: 184px; padding: 10px 11px 12px; border: 1px solid var(--line-2);
+  width: 228px; padding: 10px 11px 12px; border: 1px solid var(--line-2);
   border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-lg);
 }
 .tb-popover[hidden] { display: none; }
 .tb-pop-title { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; }
-.tb-swatches { display: flex; flex-wrap: wrap; gap: 7px; }
+.tb-pop-title.tb-pop-sub { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.tb-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
 .tb-swatch {
   width: 24px; height: 24px; border-radius: 6px; cursor: pointer;
   border: 1px solid var(--line-2); background: var(--sw); transition: transform .12s, box-shadow .12s;
 }
 .tb-swatch:hover { transform: translateY(-2px); box-shadow: 0 2px 8px rgba(38,35,29,.2); border-color: var(--ink-3); }
 .tb-swatch.swatch-clear { background: linear-gradient(135deg, var(--surface) 45%, var(--danger) 45%, var(--danger) 55%, var(--surface) 55%); }
+.tb-swatch.swatch-recent { outline: 2px solid var(--primary-soft); outline-offset: 1px; }
+.tb-color-custom { display: flex; align-items: center; gap: 7px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); }
+.tb-color-custom input[type="color"] { width: 30px; height: 26px; padding: 1px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface); cursor: pointer; }
+.tb-color-custom button { margin-left: auto; padding: 3px 9px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--primary-soft); color: var(--primary); font-size: 11.5px; cursor: pointer; font-family: var(--font); }
 .version-summary {
   font-size: 12px; color: var(--ink-3); padding: 6px 10px; margin-bottom: 10px;
   border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line);
@@ -430,6 +450,18 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
   0%, 35% { background: rgba(188, 75, 42, .12); box-shadow: 0 0 0 6px rgba(188, 75, 42, .12); }
   100% { background: transparent; box-shadow: none; }
 }
+/* 三级重点模块：工具栏标记后给顶层块加醒目的左边框与小数字 */
+.rich > .imp-1, .rich > .imp-2, .rich > .imp-3 { padding-left: 12px; border-left: 3px solid; border-radius: 0 6px 6px 0; }
+.rich > .imp-1 { border-color: #2b8a3e; background: rgba(43, 138, 62, .05); }
+.rich > .imp-2 { border-color: #e67700; background: rgba(230, 119, 0, .06); }
+.rich > .imp-3 { border-color: #d9480f; background: rgba(217, 72, 15, .07); }
+.rich > .imp-1::before, .rich > .imp-2::before, .rich > .imp-3::before {
+  display: inline-block; width: 17px; height: 17px; margin-right: 6px; border-radius: 5px;
+  color: #fff; font-size: 11px; line-height: 17px; text-align: center; font-weight: 700; vertical-align: 1px;
+}
+.rich > .imp-1::before { content: '1'; background: #2b8a3e; }
+.rich > .imp-2::before { content: '2'; background: #e67700; }
+.rich > .imp-3::before { content: '3'; background: #d9480f; }
 
 /* 悬浮目录：随当前笔记标题自动生成，可折叠；编辑区内滚动不遮挡正文操作 */
 .note-editor-body { position: relative; flex: 1; min-height: 0; display: flex; }
@@ -472,15 +504,40 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 .note-toc-item.lv2 { padding-left: 14px; }
 .note-toc-item.lv3 { padding-left: 24px; font-size: 12px; }
 .note-toc-empty { padding: 12px 8px; text-align: center; color: var(--ink-3); font-size: 12px; line-height: 1.7; }
+.note-key-section { border-top: 1px solid var(--line); padding: 6px 6px 8px; }
+.note-key-section[hidden] { display: none; }
+.note-toc-label { font-size: 12px; font-weight: 700; color: var(--ink-2); padding: 0 4px 5px; }
+.note-toc-label em { font-style: normal; font-weight: 400; color: var(--ink-3); margin-left: 3px; }
+.note-key-list { display: flex; flex-direction: column; gap: 2px; max-height: 148px; overflow-y: auto; }
+.note-key-item {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 3px 5px;
+  border: none; border-left: 2px solid transparent; border-radius: 4px; background: none;
+  color: var(--ink-2); font-size: 12px; font-family: var(--font); cursor: pointer;
+}
+.note-key-item span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.note-key-item:hover { background: var(--surface-2); color: var(--ink); }
+.note-key-item.active { background: var(--primary-soft); border-left-color: var(--primary); color: var(--primary); }
+.note-key-badge { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 4px; color: #fff; font-size: 10px; line-height: 16px; text-align: center; font-weight: 700; }
+.note-key-badge.k1 { background: #2b8a3e; }
+.note-key-badge.k2 { background: #e67700; }
+.note-key-badge.k3 { background: #d9480f; }
 .note-toc-foot {
-  display: flex; align-items: center; gap: 2px; padding: 5px 6px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 2px; padding: 5px 6px; border-top: 1px solid var(--line);
   background: var(--surface-2); flex: 0 0 auto;
 }
 .note-toc-foot button {
-  flex: 1; padding: 2px 0; border: none; border-radius: 4px; background: none; cursor: pointer;
+  flex: 1 1 42%; padding: 3px 0; border: none; border-radius: 4px; background: none; cursor: pointer;
   color: var(--ink-3); font-size: 11px; font-family: var(--font); white-space: nowrap;
 }
 .note-toc-foot button:hover { background: var(--primary-soft); color: var(--primary); }
+.note-read-chip {
+  position: absolute; left: 10px; bottom: 10px; z-index: 7; display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface);
+  color: var(--ink-2); font-size: 11px; font-family: var(--font); cursor: pointer; box-shadow: var(--shadow);
+  opacity: .88; transition: opacity .12s, color .12s;
+}
+.note-read-chip[hidden] { display: none; }
+.note-read-chip:hover { opacity: 1; color: var(--primary); }
 .note-toc.collapsed { width: 38px; height: 38px; }
 .note-toc.collapsed .note-toc-head { padding: 0; border-bottom: none; height: 100%; }
 .note-toc.collapsed .note-toc-title, .note-toc.collapsed .note-toc-body { display: none; }

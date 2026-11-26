@@ -15,6 +15,11 @@ window.Icon = (() => {
     highlight: '<path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>',
     textColor: '<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>',
     type: '<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>',
+    brush: '<path d="m17 3 4 4-9 9-5 1 1-5 9-9Z"/><path d="m16 4 4 4"/><path d="M4 21h13"/>',
+    brushHighlight: '<path d="m14 4 6 6-8 8H6v-6l8-8Z"/><path d="m17 3 4 4-2 2-4-4 2-2Z"/><path d="M4 22h16"/>',
+    priority1: '<rect x="4" y="14" width="4" height="6" rx="1" fill="currentColor"/><rect x="10" y="16" width="4" height="4" rx="1" fill="currentColor" opacity=".35"/><rect x="16" y="18" width="4" height="2" rx="1" fill="currentColor" opacity=".25"/>',
+    priority2: '<rect x="4" y="13" width="4" height="7" rx="1" fill="currentColor" opacity=".35"/><rect x="10" y="10" width="4" height="10" rx="1" fill="currentColor"/><rect x="16" y="17" width="4" height="3" rx="1" fill="currentColor" opacity=".25"/>',
+    priority3: '<rect x="4" y="9" width="4" height="11" rx="1" fill="currentColor"/><rect x="10" y="6" width="4" height="14" rx="1" fill="currentColor"/><rect x="16" y="3" width="4" height="17" rx="1" fill="currentColor"/>',
     link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
     eraser: '<path d="m7 21-4-4a2 2 0 0 1 0-2.8l9.2-9.2a2 2 0 0 1 2.8 0l4 4a2 2 0 0 1 0 2.8L12 21H7Z"/><path d="M22 21H7"/><path d="m5 11 6 6"/>',
     // 段落
@@ -45,6 +50,9 @@ window.Icon = (() => {
     message: '<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8Z"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
     plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    pin: '<path d="M9 3h6l-1 6 4 4v2H6v-2l4-4-1-6Z"/><path d="M12 15v6"/>',
+    arrowUp: '<path d="M12 20V5"/><path d="m5 12 7-7 7 7"/>',
+    bookmark: '<path d="M6 3h12v18l-6-4-6 4V3Z"/>',
     // 批注页工具
     pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     slash: '<path d="M5 19 19 5"/>',
