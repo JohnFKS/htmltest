@@ -46,12 +46,12 @@ window.RichAsk = (() => {
     if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
     const text = sel.toString().replace(/\s+/g, ' ').trim();
     if (text.length < 2) return null;
+    const range = sel.getRangeAt(0).cloneRange();
     const el = scopeEl(sel.anchorNode) || scopeEl(sel.focusNode);
     if (!el) return null;
     const editor = el.closest('#editor-area');
     let anchor = null, source = null;
     if (editor) {
-      const range = sel.getRangeAt(0);
       const startPath = pathOf(range.startContainer, editor);
       const endPath = pathOf(range.endContainer, editor);
       const block = blockOf(range.startContainer, editor) || blockOf(range.endContainer, editor);
@@ -68,7 +68,7 @@ window.RichAsk = (() => {
       const i = parent.messages?.findIndex(m => m.id === msgEl.dataset.msgId) ?? -1;
       const parentMsg = i >= 0 ? [...parent.messages.slice(0, i)].reverse().find(m => m.role === 'user') : null;
       const holder = document.createElement('div');
-      holder.appendChild(sel.getRangeAt(0).cloneContents());
+      holder.appendChild(range.cloneContents());
       let frag = Sanitize.html(holder.innerHTML);
       if (frag && !/<(?:p|div|h[1-6]|ul|ol|li|blockquote|pre|table|figure)(?:\s|>)/i.test(frag)) frag = `<p>${frag}</p>`;
       source = {
@@ -82,7 +82,8 @@ window.RichAsk = (() => {
     return {
       text: text.slice(0, 1200),
       // 仅在笔记编辑器内选中时才绑定当前笔记；AI 回答选中则沿用父会话笔记
-      noteId, anchor, ...(source ? { source } : {}),
+      noteId, anchor, editor: editor || null, range,
+      ...(source ? { source } : {}),
     };
   }
 
@@ -98,19 +99,31 @@ window.RichAsk = (() => {
     if (!sel) { hide(); return; } // 无选中 → 原生右键菜单
     e.preventDefault();
     hide();
+    const fmtApi = sel.editor && Views.notes?.format ? Views.notes.format : null;
     menu = document.createElement('div');
-    menu.className = 'ctx-menu';
-    menu.innerHTML = `
-      <button data-act="ask">${sel.source ? '↳ 针对这段 AI 回答追问…' : '🤖 在右侧对话栏提问…'}</button>
+    menu.className = 'ctx-menu' + (fmtApi ? ' has-format' : '');
+    menu.innerHTML = (fmtApi?.menuHtml?.() || '')
+      + `<button data-act="ask">${sel.source ? '↳ 针对这段 AI 回答追问…' : '🤖 在右侧对话栏提问…'}</button>
       <button data-act="explain">✨ 让 AI 解释这段（右侧）</button>`;
-    menu.style.left = U.clamp(e.clientX, 8, Math.max(8, innerWidth - 240)) + 'px';
-    menu.style.top = U.clamp(e.clientY, 8, Math.max(8, innerHeight - 96)) + 'px';
+    menu.style.left = U.clamp(e.clientX, 8, Math.max(8, innerWidth - (fmtApi ? 338 : 240))) + 'px';
+    menu.style.top = U.clamp(e.clientY, 8, Math.max(8, innerHeight - (fmtApi ? 430 : 96))) + 'px';
     document.body.appendChild(menu);
-    menu.querySelectorAll('button').forEach(btn => btn.onclick = () => {
+    menu.querySelectorAll('[data-act]').forEach(btn => btn.onclick = () => {
       const preset = btn.dataset.act === 'explain' ? '请解释这段内容：它说了什么？为什么重要？' : '';
       hide();
       openAsk(sel, preset);
     });
+    if (fmtApi) {
+      menu.querySelectorAll('[data-fmt]').forEach(btn => btn.onclick = e => {
+        e.stopPropagation();
+        hide();
+        fmtApi.runMenuAction(btn.dataset.fmt, sel.range, btn.dataset.value);
+      });
+      menu.querySelectorAll('[data-fmt-custom]').forEach(input => input.addEventListener('change', e => {
+        hide();
+        fmtApi.runMenuAction(e.target.dataset.fmtCustom, sel.range, e.target.value);
+      }));
+    }
   });
 
   // 选中文本后打开独立对话窗口：每次提问各开一个窗口，可同时问多个问题、缩小后台继续回答

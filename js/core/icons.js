@@ -17,6 +17,7 @@ window.Icon = (() => {
     type: '<path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>',
     brush: '<path d="m17 3 4 4-9 9-5 1 1-5 9-9Z"/><path d="m16 4 4 4"/><path d="M4 21h13"/>',
     brushHighlight: '<path d="m14 4 6 6-8 8H6v-6l8-8Z"/><path d="m17 3 4 4-2 2-4-4 2-2Z"/><path d="M4 22h16"/>',
+    formatPainter: '<rect x="4" y="3" width="10" height="7" rx="2"/><path d="M7 10v4h4V9h4a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-1a3 3 0 0 1-3-3v-3"/><path d="M4 6.5h6"/><path d="M19 3v2"/><path d="M18 4h2"/>',
     priority1: '<rect x="4" y="14" width="4" height="6" rx="1" fill="currentColor"/><rect x="10" y="16" width="4" height="4" rx="1" fill="currentColor" opacity=".35"/><rect x="16" y="18" width="4" height="2" rx="1" fill="currentColor" opacity=".25"/>',
     priority2: '<rect x="4" y="13" width="4" height="7" rx="1" fill="currentColor" opacity=".35"/><rect x="10" y="10" width="4" height="10" rx="1" fill="currentColor"/><rect x="16" y="17" width="4" height="3" rx="1" fill="currentColor" opacity=".25"/>',
     priority3: '<rect x="4" y="9" width="4" height="11" rx="1" fill="currentColor"/><rect x="10" y="6" width="4" height="14" rx="1" fill="currentColor"/><rect x="16" y="3" width="4" height="17" rx="1" fill="currentColor"/>',

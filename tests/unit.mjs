@@ -395,19 +395,38 @@ test('笔记工作台：重点标记 / 小刷子色板 / 阅读位置 / 置顶�
   assert.match(js, /const markImportance = level =>/, '应提供三级重点标记逻辑');
   assert.match(js, /const READ_KEY = id => `note\.readpos\.\$\{id\}`/, '阅读位置应按笔记记忆');
   assert.ok(js.includes('data-custom'), '色板应提供自定义颜色入口');
-  for (const key of ['HL_COLORS', 'FG_COLORS']) {
-    const block = js.match(new RegExp(`const ${key} = \\[([\\s\\S]*?)\\];`));
+  for (const key of ['hlColors', 'fgColors']) {
+    const block = js.match(new RegExp(`${key}: \\[([\\s\\S]*?)\\],`));
     assert.ok(block, `缺少 ${key} 色板`);
     assert.equal((block[1].match(/\{ c: /g) || []).length, 16, `${key} 应有 16 种颜色`);
   }
   const icons = readFileSync(path.join(ROOT, 'js/core/icons.js'), 'utf8');
-  for (const name of ['brush', 'brushHighlight', 'priority1', 'priority2', 'priority3', 'pin', 'arrowUp', 'bookmark']) {
+  for (const name of ['brush', 'brushHighlight', 'formatPainter', 'priority1', 'priority2', 'priority3', 'pin', 'arrowUp', 'bookmark']) {
     assert.ok(icons.includes(`${name}:`), `图标集缺少 ${name}`);
   }
   const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
   for (const sel of ['.rich > .imp-1', '.note-key-item.active', '.note-read-chip', '.note-item .note-pin.on', '.tb-color-custom']) {
     assert.ok(css.includes(sel), `样式缺少 ${sel}`);
   }
+});
+
+test('格式刷与右键格式工具栏（源码契约）', () => {
+  const js = readFileSync(path.join(ROOT, 'js/views/notes.js'), 'utf8');
+  for (const fn of ['capturePainter(range)', 'applyPainter(range)', 'togglePainter(range)', 'menuHtml()', 'runMenuAction(act, range, value)']) {
+    assert.ok(js.includes(fn), `缺少格式能力 ${fn}`);
+  }
+  assert.ok(js.includes("icon: 'formatPainter'"), '工具栏应提供格式刷按钮');
+  assert.ok(js.includes("data-fmt=\"bold\""), '右键菜单应提供加粗');
+  assert.ok(js.includes("data-fmt=\"painter\""), '右键菜单应提供格式刷');
+  assert.ok(js.includes("data-fmt=\"block\""), '右键菜单应提供标题级别');
+  assert.ok(js.includes("data-fmt=\"size\""), '右键菜单应提供字号');
+  assert.ok(js.includes("data-fmt-custom=\"color\""), '右键菜单应提供自定义颜色');
+  const ask = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
+  assert.match(ask, /editor: editor \|\| null, range/, '右键应回传笔记编辑区与选区');
+  assert.match(ask, /fmtApi\?\.menuHtml\?\.\(\)/, '右键菜单应挂载笔记格式工具');
+  assert.match(ask, /runMenuAction\(btn\.dataset\.fmt, sel\.range/, '右键格式按钮应作用于原选区');
+  const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  assert.ok(css.includes('.ctx-menu.has-format'), '右键格式菜单应有独立样式');
 });
 
 // ---------- AI 助教：多窗口 / 缩小续答 / 选段批注 ----------

@@ -3,6 +3,204 @@ window.Views = window.Views || {};
 Views.notes = {
   currentId: null,
 
+  // 悬浮色板与右键格式菜单共用同一套色板
+  hlColors: [
+    { c: '#fff2a8', n: '浅黄' }, { c: '#ffe599', n: '杏黄' }, { c: '#ffd6a5', n: '浅橙' },
+    { c: '#ffc9c9', n: '浅红' }, { c: '#ffd9e6', n: '浅粉' }, { c: '#e7dcff', n: '浅紫' },
+    { c: '#d7eaff', n: '浅蓝' }, { c: '#c8f0e8', n: '浅青' }, { c: '#d7f5e3', n: '浅绿' },
+    { c: '#e8f4c7', n: '浅草绿' }, { c: '#eceae4', n: '浅灰' }, { c: '#f5e6d3', n: '米色' },
+    { c: '#b8e0ff', n: '天蓝' }, { c: '#ffb3b3', n: '珊瑚红' }, { c: '#c9b6ff', n: '薰衣草' },
+    { c: 'transparent', n: '清除高亮' },
+  ],
+  fgColors: [
+    { c: '#26231d', n: '墨色' }, { c: '#5c564a', n: '深灰' }, { c: '#8d8677', n: '灰' },
+    { c: '#bc4b2a', n: '朱红' }, { c: '#d9480f', n: '橘红' }, { c: '#e03131', n: '红' },
+    { c: '#b98a2f', n: '金' }, { c: '#e67700', n: '橙' }, { c: '#2d6a4f', n: '墨绿' },
+    { c: '#2b8a3e', n: '绿' }, { c: '#087f5b', n: '青绿' }, { c: '#3457d5', n: '蓝' },
+    { c: '#1c7ed6', n: '天蓝' }, { c: '#6741d9', n: '紫' }, { c: '#9c36b5', n: '品红' },
+    { c: '#495057', n: '石板灰' },
+  ],
+
+  // 供工具栏、右键格式菜单与格式刷共用的富文本格式能力
+  format: {
+    painter: { armed: false, data: null, source: null },
+
+    editorEl() { return document.getElementById('editor-area'); },
+
+    currentRange() {
+      const sel = window.getSelection();
+      const ed = this.editorEl();
+      if (!sel || sel.isCollapsed || !sel.rangeCount || !ed) return null;
+      const range = sel.getRangeAt(0);
+      return ed.contains(range.startContainer) && ed.contains(range.endContainer) ? range : null;
+    },
+
+    restore(range) {
+      const ed = this.editorEl();
+      if (!range || !ed || !ed.contains(range.startContainer)) return false;
+      ed.focus({ preventScroll: true });
+      const sel = window.getSelection();
+      if (!sel) return false;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    },
+
+    after() {
+      Views.notes._afterEdit?.();
+      Views.notes._toc?.refresh?.();
+      Ktx.renderMath(this.editorEl());
+    },
+
+    exec(range, cmd, val) {
+      if (!this.restore(range)) return false;
+      try { document.execCommand('styleWithCSS', false, true); } catch (e) { /* 老浏览器忽略 */ }
+      document.execCommand(cmd, false, val);
+      this.after();
+      return true;
+    },
+
+    color(range, value) { return this.exec(range, 'foreColor', value); },
+    highlight(range, value) { return this.exec(range, 'hiliteColor', value || 'transparent'); },
+    block(range, tag) { return this.exec(range, 'formatBlock', tag); },
+
+    fontSize(range, px) {
+      const size = U.clamp(Number(px) || 16, 10, 48);
+      if (!this.restore(range)) return false;
+      const span = document.createElement('span');
+      span.style.fontSize = size + 'px';
+      try {
+        span.appendChild(range.extractContents());
+        range.insertNode(span);
+        const sel = window.getSelection();
+        const next = document.createRange();
+        next.selectNodeContents(span);
+        sel.removeAllRanges();
+        sel.addRange(next);
+        this.after();
+        return true;
+      } catch (e) {
+        UI.toast('设置字号失败', 'warn');
+        return false;
+      }
+    },
+
+    capture(range) {
+      if (!range) return null;
+      let node = range.startContainer;
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        // 选区起点可能是 <p>，真正的颜色在某层 <span>/<mark> 上；向下找第一个落在选区内的文本节点
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        let first = walker.nextNode();
+        while (first && !range.intersectsNode(first)) first = walker.nextNode();
+        node = first?.parentElement || node.firstElementChild || node;
+      } else {
+        node = node.parentElement || node;
+      }
+      if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
+      const cs = window.getComputedStyle(node);
+      const bg = cs.backgroundColor || '';
+      return {
+        color: cs.color || '',
+        bg: /^(rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)|transparent)$/i.test(bg) ? '' : bg,
+        bold: Number(cs.fontWeight) >= 600,
+        italic: /italic|oblique/i.test(cs.fontStyle || ''),
+        underline: /underline/.test(cs.textDecorationLine || ''),
+        strike: /line-through/.test(cs.textDecorationLine || ''),
+      };
+    },
+
+    sameRange(a, b) {
+      return !!a && !!b
+        && a.startContainer === b.startContainer && a.startOffset === b.startOffset
+        && a.endContainer === b.endContainer && a.endOffset === b.endOffset;
+    },
+
+    syncPainterButton() {
+      document.querySelector('#editor-toolbar .tb-format-painter')?.classList.toggle('on', this.painter.armed);
+    },
+
+    disarm() {
+      this.painter.armed = false;
+      this.painter.data = null;
+      this.painter.source = null;
+      this.syncPainterButton();
+    },
+
+    capturePainter(range) {
+      const data = this.capture(range);
+      if (!data) return false;
+      this.painter.armed = true;
+      this.painter.data = data;
+      this.painter.source = range.cloneRange();
+      this.syncPainterButton();
+      UI.toast('已复制格式：选中目标文字即可刷上，再点格式刷取消', 'success');
+      return true;
+    },
+
+    applyPainter(range) {
+      const data = this.painter.data;
+      if (!data || !this.restore(range)) return false;
+      const run = (cmd, val) => { this.restore(range); document.execCommand(cmd, false, val); };
+      try { document.execCommand('styleWithCSS', false, true); } catch (e) { /* 忽略 */ }
+      if (data.color) run('foreColor', data.color);
+      run('hiliteColor', data.bg || 'transparent');
+      for (const [cmd, on] of [['bold', data.bold], ['italic', data.italic], ['underline', data.underline], ['strikeThrough', data.strike]]) {
+        let state = false;
+        try { state = document.queryCommandState(cmd); } catch (e) { /* 忽略 */ }
+        if (state !== on) run(cmd, null);
+      }
+      this.disarm();
+      this.after();
+      UI.toast('格式已刷到选中文字', 'success');
+      return true;
+    },
+
+    togglePainter(range) {
+      if (this.painter.armed) {
+        if (range && !this.sameRange(range, this.painter.source)) this.applyPainter(range);
+        else { this.disarm(); UI.toast('已取消格式刷'); }
+        return;
+      }
+      if (!range || range.collapsed) return UI.toast('请先选中带有格式的文字', 'warn');
+      this.capturePainter(range);
+    },
+
+    runMenuAction(act, range, value) {
+      if (!range) return UI.toast('请先选中文字', 'warn');
+      const cmds = { bold: 'bold', italic: 'italic', underline: 'underline', strike: 'strikeThrough' };
+      if (cmds[act]) return this.exec(range, cmds[act]);
+      if (act === 'color') return this.color(range, value);
+      if (act === 'highlight') return this.highlight(range, value);
+      if (act === 'block') return this.block(range, value);
+      if (act === 'size') return this.fontSize(range, value);
+      if (act === 'painter') return this.togglePainter(range);
+      return false;
+    },
+
+    menuHtml() {
+      const swatches = (list, act) => list.slice(0, 8).map(x =>
+        `<button type="button" class="ctx-swatch" data-fmt="${act}" data-value="${x.c}" title="${U.esc(x.n)}" style="--sw:${x.c === 'transparent' ? '#fff' : x.c}"></button>`).join('');
+      return `<div class="ctx-format">
+        <div class="ctx-format-title">常用格式</div>
+        <div class="ctx-row">
+          <button type="button" data-fmt="bold" title="加粗"><b>B</b></button>
+          <button type="button" data-fmt="italic" title="斜体"><i>I</i></button>
+          <button type="button" data-fmt="underline" title="下划线"><u>U</u></button>
+          <button type="button" data-fmt="strike" title="删除线"><s>S</s></button>
+          <button type="button" data-fmt="painter" title="复制格式后刷到其他文字">${Icon.svg('formatPainter', 14)} 格式刷</button>
+        </div>
+        <div class="ctx-format-title">字体颜色</div>
+        <div class="ctx-row ctx-swatches">${swatches(Views.notes.fgColors, 'color')}<label class="ctx-color-label" title="自定义字体颜色"><input type="color" data-fmt-custom="color" value="#bc4b2a"><span>自定义</span></label></div>
+        <div class="ctx-format-title">高亮颜色</div>
+        <div class="ctx-row ctx-swatches">${swatches(Views.notes.hlColors.slice(0, 8), 'highlight')}<button type="button" class="ctx-swatch ctx-clear" data-fmt="highlight" data-value="transparent" title="清除高亮"></button></div>
+        <div class="ctx-format-title">标题级别 / 字号</div>
+        <div class="ctx-row">${['h1', 'h2', 'h3', 'p'].map(t => `<button type="button" data-fmt="block" data-value="${t}" title="${t === 'p' ? '正文' : '标题 ' + t[1]}">${t.toUpperCase()}</button>`).join('')}</div>
+        <div class="ctx-row">${[12, 14, 16, 18, 24].map(n => `<button type="button" data-fmt="size" data-value="${n}" title="字号 ${n}px">${n}px</button>`).join('')}</div>
+      </div><div class="ctx-sep"></div>`;
+    },
+  },
+
   render(container) {
     const notes = Store.coll('notes');
     container.innerHTML = `
@@ -392,6 +590,7 @@ Views.notes = {
     };
     const debouncedSave = U.debounce(saveDraft, 600);
     const afterEdit = () => { markDirty(); debouncedSave(); };
+    this._afterEdit = afterEdit;
 
     const pruneVersions = noteId => {
       const max = U.clamp(Number(notesCfg().maxVersions) || 20, 1, 200);
@@ -873,22 +1072,8 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
       UI.toast(current === level ? '已取消重点标记' : `已标记为 ${level} 级重点`, 'success');
     };
 
-    const HL_COLORS = [
-      { c: '#fff2a8', n: '浅黄' }, { c: '#ffe599', n: '杏黄' }, { c: '#ffd6a5', n: '浅橙' },
-      { c: '#ffc9c9', n: '浅红' }, { c: '#ffd9e6', n: '浅粉' }, { c: '#e7dcff', n: '浅紫' },
-      { c: '#d7eaff', n: '浅蓝' }, { c: '#c8f0e8', n: '浅青' }, { c: '#d7f5e3', n: '浅绿' },
-      { c: '#e8f4c7', n: '浅草绿' }, { c: '#eceae4', n: '浅灰' }, { c: '#f5e6d3', n: '米色' },
-      { c: '#b8e0ff', n: '天蓝' }, { c: '#ffb3b3', n: '珊瑚红' }, { c: '#c9b6ff', n: '薰衣草' },
-      { c: 'transparent', n: '清除高亮' },
-    ];
-    const FG_COLORS = [
-      { c: '#26231d', n: '墨色' }, { c: '#5c564a', n: '深灰' }, { c: '#8d8677', n: '灰' },
-      { c: '#bc4b2a', n: '朱红' }, { c: '#d9480f', n: '橘红' }, { c: '#e03131', n: '红' },
-      { c: '#b98a2f', n: '金' }, { c: '#e67700', n: '橙' }, { c: '#2d6a4f', n: '墨绿' },
-      { c: '#2b8a3e', n: '绿' }, { c: '#087f5b', n: '青绿' }, { c: '#3457d5', n: '蓝' },
-      { c: '#1c7ed6', n: '天蓝' }, { c: '#6741d9', n: '紫' }, { c: '#9c36b5', n: '品红' },
-      { c: '#495057', n: '石板灰' },
-    ];
+    const HL_COLORS = Views.notes.hlColors;
+    const FG_COLORS = Views.notes.fgColors;
 
     const tools = [
       { icon: 'undo', title: '撤销 (Ctrl+Z)', cmd: undoApi.undo || (() => {}) },
@@ -901,6 +1086,7 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
       { sep: true },
       { icon: 'brushHighlight', title: '高亮小刷子：16 色 + 自定义颜色', palette: 'hl', cls: 'tb-brush-hl' },
       { icon: 'brush', title: '文字颜色小刷子：16 色 + 自定义颜色', palette: 'fg', cls: 'tb-brush-fg' },
+      { icon: 'formatPainter', title: '格式刷：复制选中文字的颜色/高亮等格式，再选中目标文字刷上（再点取消）', cmd: () => Views.notes.format.togglePainter(Views.notes.format.currentRange()), cls: 'tb-format-painter' },
       { icon: 'sup', title: '上标', cmd: () => exec('superscript') },
       { icon: 'sub', title: '下标', cmd: () => exec('subscript') },
       { sep: true },
@@ -1009,8 +1195,24 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
     const onDocDown = e => {
       if (!popover.hidden && !popover.contains(e.target) && !e.target.closest?.('.tb-palette-btn')) closePop();
     };
+    // 格式刷武装后，下一次在编辑区完成选中即自动刷上（左键拖选 / 键盘 Shift+方向）
+    const onPaintSelect = e => {
+      const fmt = Views.notes.format;
+      if (!fmt.painter.armed || e.button === 2) return;
+      setTimeout(() => {
+        const range = fmt.currentRange();
+        if (range && !fmt.sameRange(range, fmt.painter.source)) fmt.applyPainter(range);
+      }, 0);
+    };
     document.addEventListener('pointerdown', onDocDown);
-    return () => document.removeEventListener('pointerdown', onDocDown);
+    editor.addEventListener('mouseup', onPaintSelect);
+    editor.addEventListener('keyup', onPaintSelect);
+    return () => {
+      document.removeEventListener('pointerdown', onDocDown);
+      editor.removeEventListener('mouseup', onPaintSelect);
+      editor.removeEventListener('keyup', onPaintSelect);
+      Views.notes.format.disarm();
+    };
   },
 
   tableHtml(rows, cols) {
