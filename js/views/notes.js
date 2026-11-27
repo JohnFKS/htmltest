@@ -280,11 +280,13 @@ Views.notes = {
                 <button class="btn btn-ghost btn-sm" id="note-autosave" title="设置自动保存间隔与版本保留数量">${Icon.svg('settings', 14)} 保存设置</button>
                 <span class="note-head-sep"></span>
                 <button class="btn btn-ghost btn-sm" id="note-md-import" title="把 Markdown 文本转换为富文本块追加到笔记">MD 粘贴转换</button>
-                <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">${Icon.svg('file', 14)} 导入文件</button>
+                <button class="btn btn-ghost btn-sm" id="note-import-md" title="导入 .md / .markdown / .txt 文件，自动生成一篇新笔记">${Icon.svg('file', 14)} 导入 MD</button>
+                <button class="btn btn-ghost btn-sm" id="note-import-html" title="导入 .html / .htm 文件，安全解析为可编辑的富文本笔记">${Icon.svg('file', 14)} 导入 HTML</button>
                 <button class="btn btn-ghost btn-sm" id="note-import-pdf" title="导入 PDF 教材：AI 按页整理成结构化学习笔记，可同时生成题库">${Icon.svg('book', 14)} 导入 PDF</button>
                 <button class="btn btn-ghost btn-sm" id="note-insert-annot" title="插入截图批注产物">插入批注图</button>
                 <button class="btn btn-ghost btn-sm" id="note-chat-open" title="打开右侧笔记助教：多轮提问与历史对话">${Icon.svg('message', 14)} 笔记助教</button>
                 <button class="btn btn-ghost btn-sm" id="note-toc-toggle" title="显示/隐藏悬浮目录（自动提取 H1-H3 标题）">${Icon.svg('list', 14)} 目录</button>
+                <button class="btn btn-ghost btn-sm" id="note-export-md" title="导出为 Markdown 文件（.md，可再次导入）">${Icon.svg('download', 14)} 导出 MD</button>
                 <button class="btn btn-ghost btn-sm" id="note-export" title="导出为独立 HTML 文件">${Icon.svg('download', 14)} 导出 HTML</button>
               </div>
             </div>
@@ -833,8 +835,11 @@ Views.notes = {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.md,.markdown,.txt,text/plain,text/markdown';
+      input.style.display = 'none';
+      document.body.appendChild(input);
       input.onchange = async () => {
         const f = input.files[0];
+        input.remove();
         if (!f) return;
         if (f.size > 5 * 1024 * 1024) return UI.toast('文件超过 5MB 限制', 'warn');
         const text = await f.text();
@@ -850,6 +855,36 @@ Views.notes = {
         this.open(n.id, editor, titleInput);
         Ktx.renderMath(editor);
         UI.toast(`已导入「${title}」（约 ${Math.round(text.length / 100) / 10} 千字）`, 'success');
+      };
+      input.click();
+    };
+
+    // ---------- 导入 HTML 文件生成新笔记（去脚本/样式，保留可编辑富文本） ----------
+    container.querySelector('#note-import-html').onclick = () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.html,.htm,text/html';
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      input.onchange = async () => {
+        const f = input.files[0];
+        input.remove();
+        if (!f) return;
+        if (f.size > 8 * 1024 * 1024) return UI.toast('文件超过 8MB 限制', 'warn');
+        const text = await f.text();
+        let parsed;
+        try { parsed = MD.importHtml(text); }
+        catch (e) { return UI.toast(`HTML 解析失败：${e.message}`, 'error'); }
+        if (!U.stripHtml(parsed.html)) return UI.toast('文件内容为空或无法解析', 'warn');
+        const title = parsed.title || f.name.replace(/\.html?$/i, '') || '导入的 HTML';
+        const n = Store.insert('notes', {
+          id: U.uid('note'), title, content: parsed.html, pinned: false,
+          createdAt: U.now(), updatedAt: U.now(),
+        });
+        this.currentId = n.id;
+        this.open(n.id, editor, titleInput);
+        Ktx.renderMath(editor);
+        UI.toast(`已导入 HTML「${title.slice(0, 20)}」，脚本/样式已过滤，格式可继续编辑`, 'success');
       };
       input.click();
     };
@@ -994,6 +1029,15 @@ Views.notes = {
     container.querySelector('#note-chat-open').onclick = () => {
       if (window.NoteChat) NoteChat.toggle();
       else UI.toast('对话栏尚未就绪，请刷新页面', 'error');
+    };
+
+    // ---------- 导出 Markdown（公式还原为 $...$，颜色/高亮保留为内联 HTML） ----------
+    container.querySelector('#note-export-md').onclick = () => {
+      const n = Store.find('notes', this.currentId);
+      if (!n) return UI.toast('请先选择笔记', 'warn');
+      const md = MD.toMarkdown(n.content || '', n.title || '未命名笔记');
+      U.download(`${n.title || '笔记'}.md`, md, 'text/markdown');
+      UI.toast('已导出 Markdown 文件', 'success');
     };
 
     // ---------- 导出独立 HTML（含可折叠目录与章节锚点） ----------

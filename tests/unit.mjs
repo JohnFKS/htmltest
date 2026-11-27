@@ -47,6 +47,19 @@ test('MD 块级：标题 / 列表 / 引用 / 表格', () => {
   assert.match(html, /<blockquote>/);
 });
 
+test('MD 反向导出与 HTML 文件导入（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/md.js'), 'utf8');
+  for (const fn of ['toMarkdown(html =', 'importHtml(raw =']) {
+    assert.ok(src.includes(fn), `缺少 ${fn}`);
+  }
+  assert.ok(src.includes('annotation[encoding="application/x-tex"]'), '应还原 KaTeX 公式为 $...$');
+  assert.ok(src.includes('font[color]'), '应把 <font color> 转成可保留的内联颜色');
+  assert.ok(src.includes('.export-toc'), '导入 HTML 时应移除导出页悬浮目录');
+  assert.ok(src.includes('Sanitize.html(source.innerHTML)'), '导入 HTML 必须经过白名单消毒');
+  assert.ok(src.includes('```'), '代码块应导出为围栏代码');
+  assert.ok(src.includes('| '), '表格应导出为 GFM 管道表格');
+});
+
 test('Sanitize 配置：危险 URL 被拒、安全 data:image 放行', () => {
   // 从源码抽取 safeUrl 的判定规则做参数化验证（与 sanitize.js 同步维护）
   const src = readFileSync(path.join(ROOT, 'js/core/sanitize.js'), 'utf8');
@@ -389,7 +402,7 @@ test('笔记目录：界面结构、自动刷新与折叠样式（源码契约�
 
 test('笔记工作台：重点标记 / 小刷子色板 / 阅读位置 / 置顶（源码契约）', () => {
   const js = readFileSync(path.join(ROOT, 'js/views/notes.js'), 'utf8');
-  for (const id of ['note-pin', 'note-go-top', 'note-go-last', 'note-key-section', 'note-read-chip', 'note-toc-ai-btn']) {
+  for (const id of ['note-pin', 'note-go-top', 'note-go-last', 'note-key-section', 'note-read-chip', 'note-toc-ai-btn', 'note-import-html', 'note-export-md']) {
     assert.ok(js.includes(`id="${id}"`), `缺少界面元素 ${id}`);
   }
   assert.match(js, /const markImportance = level =>/, '应提供三级重点标记逻辑');
@@ -398,6 +411,8 @@ test('笔记工作台：重点标记 / 小刷子色板 / 阅读位置 / 置顶�
   assert.ok(js.includes("querySelector('#note-toc-fold-btn').onclick = () => setTocCollapsed(!tocCollapsed)"), '折叠按钮应能展开/收起目录');
   assert.ok(js.includes("querySelector('#note-toc-ai-btn').onclick"), '目录头部 AI 按钮应绑定开关侧栏');
   assert.ok(js.includes('NoteChat.toggle()'), '目录头部 AI 按钮应切换 AI 侧边栏');
+  assert.ok(js.includes('MD.importHtml(text)'), 'HTML 导入应走 MD.importHtml 解析');
+  assert.ok(js.includes('MD.toMarkdown(n.content || \'\', n.title || \'未命名笔记\')'), 'MD 导出应走 MD.toMarkdown');
   for (const key of ['hlColors', 'fgColors']) {
     const block = js.match(new RegExp(`${key}: \\[([\\s\\S]*?)\\],`));
     assert.ok(block, `缺少 ${key} 色板`);

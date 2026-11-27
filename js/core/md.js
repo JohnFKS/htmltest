@@ -98,11 +98,151 @@ window.MD = (() => {
     return out.join('');
   }
 
+  // ---------- HTML → Markdown：导出笔记时保留标题/列表/表格/代码/公式/颜色等结构 ----------
+  const escMd = s => String(s ?? '').replace(/\\/g, '\\\\').replace(/([`*_\[\]<>|])/g, '\\$1').replace(/\r\n?/g, '\n');
+  const escAttr = s => U.esc(String(s ?? ''));
+  const mdInline = node => {
+    if (node.nodeType === Node.TEXT_NODE) return escMd(node.textContent || '');
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const tag = node.tagName.toLowerCase();
+    const kids = () => [...node.childNodes].map(mdInline).join('');
+    if (tag === 'br') return '  \n';
+    if (tag === 'strong' || tag === 'b') return `**${kids()}**`;
+    if (tag === 'em' || tag === 'i') return `*${kids()}*`;
+    if (tag === 'del' || tag === 's' || tag === 'strike') return `~~${kids()}~~`;
+    if (tag === 'code') return `\`${node.textContent || ''}\``;
+    if (tag === 'a') return `[${kids()}](${escAttr(node.getAttribute('href') || '')})`;
+    if (tag === 'img') return `![${escAttr(node.getAttribute('alt') || '')}](${escAttr(node.getAttribute('src') || '')})`;
+    if (tag === 'input' && node.getAttribute('type') === 'checkbox') return node.hasAttribute('checked') ? '[x]' : '[ ]';
+    if (tag === 'sup' || tag === 'sub') return `<${tag}>${kids()}</${tag}>`;
+    if (tag === 'mark') {
+      const style = node.getAttribute('style');
+      return style ? `<mark style="${escAttr(style)}">${kids()}</mark>` : `==${kids()}==`;
+    }
+    if (tag === 'span') {
+      if (node.classList.contains('katex-inline') || node.hasAttribute('data-tex')) {
+        const tex = node.getAttribute('data-tex') || node.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim();
+        if (tex) return `$${tex.trim()}$`;
+      }
+      const style = node.getAttribute('style');
+      const cls = node.getAttribute('class');
+      if (style || cls) return `<span${style ? ` style="${escAttr(style)}"` : ''}${cls ? ` class="${escAttr(cls)}"` : ''}>${kids()}</span>`;
+    }
+    return kids();
+  };
+
+  const mdList = (el, depth = 0) => {
+    const pad = '  '.repeat(depth);
+    const ordered = el.tagName.toLowerCase() === 'ol';
+    const start = Number(el.getAttribute('start') || 1) || 1;
+    return [...el.children].filter(li => li.tagName.toLowerCase() === 'li').map((li, i) => {
+      const box = li.querySelector(':scope > input[type="checkbox"]');
+      let text = '', nested = '';
+      [...li.childNodes].forEach(n => {
+        if (n === box) return;
+        if (n.nodeType === Node.ELEMENT_NODE && /^(UL|OL)$/.test(n.tagName)) nested += '\n' + mdList(n, depth + 1);
+        else text += mdInline(n);
+      });
+      const prefix = ordered ? `${start + i}. ` : '- ';
+      return `${pad}${prefix}${box ? (box.hasAttribute('checked') ? '[x] ' : '[ ] ') : ''}${text.trim()}${nested}`;
+    }).join('\n');
+  };
+
+  const mdTable = el => {
+    const cell = c => mdInline(c).replace(/\|/g, '\\|');
+    const rows = [...el.querySelectorAll('tr')];
+    if (!rows.length) return '';
+    const head = [...rows[0].children].filter(c => /^(TH|TD)$/.test(c.tagName)).map(cell);
+    const body = rows.slice(1).map(r => '| ' + [...r.children].filter(c => /^(TH|TD)$/.test(c.tagName)).map(cell).join(' | ') + ' |');
+    return `| ${head.join(' | ')} |\n| ${head.map(() => '---').join(' | ')} |\n${body.join('\n')}`.trim();
+  };
+
+  const mdBlocks = root => {
+    const out = [];
+    [...root.childNodes].forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const t = node.textContent.replace(/\s+/g, ' ');
+        if (t.trim()) out.push(escMd(t.trim()));
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = node.tagName.toLowerCase();
+      if (/^h[1-6]$/.test(tag)) out.push(`${'#'.repeat(+tag[1])} ${mdInline(node)}`);
+      else if (tag === 'p' || tag === 'div' || tag === 'figure' || tag === 'figcaption') {
+        const inner = node.querySelector('p,div,ul,ol,table,pre,blockquote,details') ? mdBlocks(node) : mdInline(node);
+        if (inner.trim()) out.push(inner.trim());
+      } else if (tag === 'ul' || tag === 'ol') out.push(mdList(node));
+      else if (tag === 'pre') {
+        const code = node.querySelector('code') || node;
+        const lang = (code.className.match(/language-([\w+-]+)/) || [])[1] || '';
+        out.push('```' + lang + '\n' + (code.textContent || '').replace(/\n$/, '') + '\n```');
+      } else if (tag === 'blockquote') out.push(mdBlocks(node).split('\n').map(l => `> ${l}`).join('\n'));
+      else if (tag === 'table') out.push(mdTable(node));
+      else if (tag === 'hr') out.push('---');
+      else if (tag === 'details') {
+        const summary = node.querySelector('summary');
+        const rest = document.createElement('div');
+        [...node.childNodes].forEach(n => { if (n !== summary) rest.appendChild(n.cloneNode(true)); });
+        out.push(`<details${node.hasAttribute('open') ? ' open' : ''}><summary>${summary ? mdInline(summary) : '详情'}</summary>\n\n${mdBlocks(rest).trim()}\n\n</details>`);
+      } else {
+        const inner = mdInline(node);
+        if (inner.trim()) out.push(inner.trim());
+      }
+    });
+    return out.filter(Boolean).join('\n\n');
+  };
+
   return {
+    /** HTML → Markdown（导出笔记；公式还原为 $...$，自定义颜色保留为内联 HTML） */
+    toMarkdown(html = '', title = '') {
+      const holder = document.createElement('div');
+      holder.innerHTML = Sanitize.html(html);
+      const body = mdBlocks(holder).trim();
+      const cleanTitle = String(title || '').trim();
+      const firstH1 = holder.firstElementChild?.tagName === 'H1' ? holder.firstElementChild.textContent.trim() : '';
+      const head = cleanTitle && firstH1 !== cleanTitle ? `# ${escMd(cleanTitle)}\n\n` : '';
+      return (head + body).replace(/\n{3,}/g, '\n\n').trim() + '\n';
+    },
+    /** 完整 HTML 文件 → 可编辑富文本笔记（去脚本样式/KaTeX 渲染层，保留白名单标签与内联颜色） */
+    importHtml(raw = '') {
+      const doc = new DOMParser().parseFromString(String(raw), 'text/html');
+      const title = (doc.querySelector('title')?.textContent || doc.querySelector('h1')?.textContent || '')
+        .replace(/\s+/g, ' ').trim().slice(0, 80) || '导入的 HTML';
+      const source = doc.querySelector('article, main') || doc.body || doc.documentElement;
+      source.querySelectorAll('script, style, noscript, nav, header, footer, .export-toc').forEach(el => el.remove());
+      source.querySelectorAll('font[color]').forEach(font => {
+        const span = doc.createElement('span');
+        span.setAttribute('style', `color:${font.getAttribute('color')}`);
+        while (font.firstChild) span.appendChild(font.firstChild);
+        font.replaceWith(span);
+      });
+      source.querySelectorAll('annotation[encoding="application/x-tex"]').forEach(ann => {
+        const tex = ann.textContent.trim();
+        const host = ann.closest('.katex') || ann.parentElement?.parentElement;
+        if (!tex || !host) return;
+        const span = doc.createElement('span');
+        span.setAttribute('data-tex', tex);
+        span.textContent = `$${tex}$`;
+        host.replaceWith(span);
+      });
+      source.querySelectorAll('.katex, .katex-inline').forEach(el => {
+        if (!el.hasAttribute('data-tex')) el.replaceWith(doc.createTextNode(el.textContent || ''));
+      });
+      let html = Sanitize.html(source.innerHTML);
+      if (!U.stripHtml(html)) html = `<p>${U.esc((source.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 2000))}</p>`;
+      return { title, html };
+    },
     /** MD 文本 → HTML 片段（内联数学公式保持原文，交给 KaTeX 渲染） */
     toHtml(mdText = '') {
       const m = mdit();
-      if (m) return m.render(String(mdText)).replace(/==([^=\n<]+)==/g, '<mark>$1</mark>');
+      if (m) {
+        const html = m.render(String(mdText))
+          .replace(/==([^=\n<]+)==/g, '<mark>$1</mark>')
+          // markdown-it 默认把 - [x] 渲染成普通文本；归一化为应用内可勾选的待办块
+          .replace(/<li>\s*\[([ xX])\]\s*([\s\S]*?)<\/li>/g,
+            (all, mark, inner) => `<li><input type="checkbox"${mark.toLowerCase() === 'x' ? ' checked' : ''}><span>${inner}</span></li>`);
+        return html.replace(/<ul>((?:\s*<li><input type="checkbox"[\s\S]*?<\/li>)+)\s*<\/ul>/g, '<ul class="todo-list">$1</ul>');
+      }
       return block(String(mdText).replace(/\r\n?/g, '\n').split('\n'), []);
     },
     /** 检测文本是否像 Markdown（用于粘贴自动转换） */
