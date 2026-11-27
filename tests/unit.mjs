@@ -389,12 +389,15 @@ test('笔记目录：界面结构、自动刷新与折叠样式（源码契约�
 
 test('笔记工作台：重点标记 / 小刷子色板 / 阅读位置 / 置顶（源码契约）', () => {
   const js = readFileSync(path.join(ROOT, 'js/views/notes.js'), 'utf8');
-  for (const id of ['note-pin', 'note-go-top', 'note-go-last', 'note-key-section', 'note-read-chip']) {
+  for (const id of ['note-pin', 'note-go-top', 'note-go-last', 'note-key-section', 'note-read-chip', 'note-toc-ai-btn']) {
     assert.ok(js.includes(`id="${id}"`), `缺少界面元素 ${id}`);
   }
   assert.match(js, /const markImportance = level =>/, '应提供三级重点标记逻辑');
   assert.match(js, /const READ_KEY = id => `note\.readpos\.\$\{id\}`/, '阅读位置应按笔记记忆');
   assert.ok(js.includes('data-custom'), '色板应提供自定义颜色入口');
+  assert.ok(js.includes("querySelector('#note-toc-fold-btn').onclick = () => setTocCollapsed(!tocCollapsed)"), '折叠按钮应能展开/收起目录');
+  assert.ok(js.includes("querySelector('#note-toc-ai-btn').onclick"), '目录头部 AI 按钮应绑定开关侧栏');
+  assert.ok(js.includes('NoteChat.toggle()'), '目录头部 AI 按钮应切换 AI 侧边栏');
   for (const key of ['hlColors', 'fgColors']) {
     const block = js.match(new RegExp(`${key}: \\[([\\s\\S]*?)\\],`));
     assert.ok(block, `缺少 ${key} 色板`);

@@ -296,6 +296,7 @@ Views.notes = {
             <aside class="note-toc" id="note-toc" aria-label="笔记目录">
               <div class="note-toc-head">
                 <span class="note-toc-title">目录 <em id="note-toc-count">0</em></span>
+                <button type="button" class="note-toc-ai-btn" id="note-toc-ai-btn" title="打开/关闭 AI 笔记助教侧边栏" aria-label="打开/关闭 AI 笔记助教侧边栏">${Icon.svg('message', 15)}</button>
                 <button type="button" class="note-toc-fold-btn" id="note-toc-fold-btn" title="折叠目录" aria-label="折叠目录">${Icon.svg('details', 15)}</button>
               </div>
               <div class="note-toc-body">
@@ -468,7 +469,12 @@ Views.notes = {
       if (!collapsed) refreshToc();
     };
     tocToggleBtn.onclick = () => setTocCollapsed(!tocCollapsed);
-    tocEl.querySelector('#note-toc-fold-btn').onclick = () => setTocCollapsed(true);
+    tocEl.querySelector('#note-toc-fold-btn').onclick = () => setTocCollapsed(!tocCollapsed);
+    tocEl.querySelector('#note-toc-ai-btn').onclick = e => {
+      e.stopPropagation();
+      if (window.NoteChat) NoteChat.toggle();
+      else UI.toast('对话栏尚未就绪，请刷新页面', 'error');
+    };
     tocEl.querySelectorAll('.note-toc-foot button').forEach(btn => {
       btn.onclick = () => {
         if (btn.dataset.act === 'top') { jumpTo(0, '已回到笔记开头'); return; }
