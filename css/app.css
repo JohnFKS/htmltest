@@ -367,7 +367,12 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 }
 .tb-btn:hover { background: var(--surface-2); color: var(--primary); }
 .tb-btn.on { background: var(--primary-soft); color: var(--primary); }
-.tb-palette-btn { color: var(--accent); }
+/* 双色刷：左键应用上次颜色，右键换色；底部色条实时显示当前默认色 */
+.tb-palette-btn { position: relative; color: var(--accent); }
+.tb-palette-btn::after {
+  content: ''; position: absolute; left: 5px; right: 5px; bottom: 3px; height: 2px;
+  border-radius: 2px; background: var(--last, var(--accent)); pointer-events: none;
+}
 .tb-brush-hl { color: #e67700; }
 .tb-brush-fg { color: #bc4b2a; }
 .tb-priority.p1 { color: #2b8a3e; }

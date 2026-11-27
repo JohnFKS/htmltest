@@ -60,8 +60,63 @@ Views.notes = {
       return true;
     },
 
-    color(range, value) { return this.exec(range, 'foreColor', value); },
-    highlight(range, value) { return this.exec(range, 'hiliteColor', value || 'transparent'); },
+    COLOR_KEY: kind => `note.color.recent.${kind}`,
+
+    toHex(color) {
+      const s = String(color || '').trim();
+      if (/^#[0-9a-f]{6}$/i.test(s)) return s.toLowerCase();
+      const m = s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+      if (!m) return '';
+      return '#' + [m[1], m[2], m[3]].map(n => Number(n).toString(16).padStart(2, '0')).join('');
+    },
+
+    recentColors(kind) {
+      try {
+        const arr = JSON.parse(localStorage.getItem(this.COLOR_KEY(kind)) || '[]');
+        return Array.isArray(arr) ? arr.filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 8) : [];
+      } catch (e) { return []; }
+    },
+
+    lastColor(kind) {
+      return this.recentColors(kind)[0] || (kind === 'hl' ? '#fff2a8' : '#bc4b2a');
+    },
+
+    rememberColor(kind, color) {
+      const hex = this.toHex(color);
+      if (!hex) return;
+      const list = [hex, ...this.recentColors(kind).filter(c => c !== hex)].slice(0, 8);
+      try { localStorage.setItem(this.COLOR_KEY(kind), JSON.stringify(list)); } catch (e) { /* 隐私模式忽略 */ }
+      this.syncPaletteButtons();
+    },
+
+    syncPaletteButtons() {
+      for (const kind of ['hl', 'fg']) {
+        const color = this.lastColor(kind);
+        const label = kind === 'hl' ? '高亮' : '文字颜色';
+        document.querySelectorAll(`#editor-toolbar .tb-palette-btn[data-palette="${kind}"]`).forEach(btn => {
+          btn.style.setProperty('--last', color);
+          btn.title = `${label}小刷子：左键应用上次颜色 ${color}，右键更换颜色`;
+          btn.setAttribute('aria-label', btn.title);
+        });
+      }
+    },
+
+    applyLastColor(kind, range) {
+      const target = range || this.currentRange();
+      if (!target) return UI.toast('请先选中要设置的文字', 'warn');
+      return kind === 'hl' ? this.highlight(target, this.lastColor(kind)) : this.color(target, this.lastColor(kind));
+    },
+
+    color(range, value) {
+      const ok = this.exec(range, 'foreColor', value);
+      if (ok) this.rememberColor('fg', value);
+      return ok;
+    },
+    highlight(range, value) {
+      const ok = this.exec(range, 'hiliteColor', value || 'transparent');
+      if (ok && value !== 'transparent') this.rememberColor('hl', value);
+      return ok;
+    },
     block(range, tag) { return this.exec(range, 'formatBlock', tag); },
 
     fontSize(range, px) {
@@ -143,8 +198,9 @@ Views.notes = {
       if (!data || !this.restore(range)) return false;
       const run = (cmd, val) => { this.restore(range); document.execCommand(cmd, false, val); };
       try { document.execCommand('styleWithCSS', false, true); } catch (e) { /* 忽略 */ }
-      if (data.color) run('foreColor', data.color);
-      run('hiliteColor', data.bg || 'transparent');
+      if (data.color) { run('foreColor', data.color); this.rememberColor('fg', data.color); }
+      if (data.bg) { run('hiliteColor', data.bg); this.rememberColor('hl', data.bg); }
+      else run('hiliteColor', 'transparent');
       for (const [cmd, on] of [['bold', data.bold], ['italic', data.italic], ['underline', data.underline], ['strikeThrough', data.strike]]) {
         let state = false;
         try { state = document.queryCommandState(cmd); } catch (e) { /* 忽略 */ }
@@ -1036,9 +1092,6 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
       document.execCommand('insertHTML', false, html);
       Ktx.renderMath(editor);
     };
-    // 让 color/hiliteColor 产出稳定的内联 style（而非 font 标签），消毒与导出都能保留
-    const useCss = () => { try { document.execCommand('styleWithCSS', false, true); } catch (e) { /* 老浏览器忽略 */ } };
-
     // 三级重点：给选中（或光标所在）的顶层模块打 class，目录里生成可跳转的重点列表
     const IMP_CLASSES = ['imp-1', 'imp-2', 'imp-3'];
     const topBlockOf = node => {
@@ -1135,42 +1188,38 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
 
     bar.innerHTML = tools.map((t, i) => t.sep
       ? '<span class="tb-sep"></span>'
-      : `<button type="button" class="tb-btn${t.palette ? ' tb-palette-btn' : ''}${t.cls ? ' ' + t.cls : ''}" data-i="${i}" title="${t.title}" aria-label="${t.title}">${icon(t.icon)}</button>`
+      : `<button type="button" class="tb-btn${t.palette ? ' tb-palette-btn' : ''}${t.cls ? ' ' + t.cls : ''}" data-i="${i}"${t.palette ? ` data-palette="${t.palette}"` : ''} title="${t.title}" aria-label="${t.title}">${icon(t.icon)}</button>`
     ).join('') + '<div class="tb-popover" hidden></div>';
+    Views.notes.format.syncPaletteButtons();
 
     const popover = bar.querySelector('.tb-popover');
     const closePop = () => { popover.hidden = true; };
-    const RECENT_KEY = kind => `note.color.recent.${kind}`;
-    const getRecent = kind => {
-      try {
-        const arr = JSON.parse(localStorage.getItem(RECENT_KEY(kind)) || '[]');
-        return Array.isArray(arr) ? arr.filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 8) : [];
-      } catch (e) { return []; }
-    };
-    const addRecent = (kind, color) => {
-      if (!/^#[0-9a-f]{6}$/i.test(color)) return;
-      const list = [color, ...getRecent(kind).filter(c => c !== color)].slice(0, 8);
-      try { localStorage.setItem(RECENT_KEY(kind), JSON.stringify(list)); } catch (e) { /* 忽略 */ }
-    };
+    let paletteRange = null;
     const applyColor = (kind, color) => {
-      useCss();
-      exec(kind === 'hl' ? 'hiliteColor' : 'foreColor', color);
-      if (color !== 'transparent') addRecent(kind, color);
+      const target = paletteRange || Views.notes.format.currentRange();
+      if (target) {
+        if (kind === 'hl') Views.notes.format.highlight(target, color);
+        else Views.notes.format.color(target, color);
+      } else if (color !== 'transparent') {
+        Views.notes.format.rememberColor(kind, color);
+        UI.toast('已设为默认颜色', 'success');
+      }
       closePop();
-      save();
+      paletteRange = null;
     };
     const swatchHtml = (color, name, cls = '') =>
       `<button type="button" class="tb-swatch${cls}" data-color="${color}" title="${U.esc(name)}" style="--sw:${color === 'transparent' ? '#fff' : color}"></button>`;
-    const openPop = (kind, btn) => {
-      if (!popover.hidden && popover.dataset.kind === kind) { closePop(); return; }
+    const openPop = (kind, btn, range) => {
+      if (!popover.hidden && popover.dataset.kind === kind) { closePop(); paletteRange = null; return; }
       popover.dataset.kind = kind;
+      paletteRange = range || Views.notes.format.currentRange();
       const list = kind === 'hl' ? HL_COLORS : FG_COLORS;
-      const recent = getRecent(kind);
-      popover.innerHTML = `<div class="tb-pop-title">${kind === 'hl' ? '高亮小刷子 · 16 色' : '文字颜色小刷子 · 16 色'}</div>`
+      const recent = Views.notes.format.recentColors(kind);
+      popover.innerHTML = `<div class="tb-pop-title">${kind === 'hl' ? '高亮' : '文字颜色'}小刷子 · 右键更换颜色</div>`
         + `<div class="tb-swatches">${list.map(x => swatchHtml(x.c, x.n, x.c === 'transparent' ? ' swatch-clear' : '')).join('')}</div>`
         + (recent.length ? `<div class="tb-pop-title tb-pop-sub">最近使用</div><div class="tb-swatches">${recent.map(c => swatchHtml(c, c, ' swatch-recent')).join('')}</div>` : '')
         + `<div class="tb-color-custom"><span>自定义${kind === 'hl' ? '高亮' : '文字'}色</span>`
-        + `<input type="color" data-custom value="${kind === 'hl' ? '#fff2a8' : '#bc4b2a'}" title="选择任意颜色">`
+        + `<input type="color" data-custom value="${Views.notes.format.lastColor(kind)}" title="选择任意颜色">`
         + `<button type="button" data-apply>应用</button></div>`;
       const br = btn.getBoundingClientRect(), pr = bar.getBoundingClientRect();
       popover.style.left = Math.max(0, Math.min(br.left - pr.left, pr.width - 228)) + 'px';
@@ -1186,10 +1235,22 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
       btn.onclick = e => {
         e.stopPropagation();
         const t = tools[+btn.dataset.i];
-        if (t.palette) { openPop(t.palette, btn); return; }
+        if (t.palette) {
+          closePop();
+          paletteRange = null;
+          Views.notes.format.applyLastColor(t.palette, Views.notes.format.currentRange());
+          return;
+        }
         closePop();
         t.cmd();
         save();
+      };
+      btn.oncontextmenu = e => {
+        const t = tools[+btn.dataset.i];
+        if (!t?.palette) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openPop(t.palette, btn, Views.notes.format.currentRange());
       };
     });
     const onDocDown = e => {

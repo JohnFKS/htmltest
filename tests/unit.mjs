@@ -429,6 +429,20 @@ test('格式刷与右键格式工具栏（源码契约）', () => {
   assert.ok(css.includes('.ctx-menu.has-format'), '右键格式菜单应有独立样式');
 });
 
+test('双色刷：左键应用上次颜色，右键更换颜色（源码契约）', () => {
+  const js = readFileSync(path.join(ROOT, 'js/views/notes.js'), 'utf8');
+  for (const fn of ['lastColor(kind)', 'rememberColor(kind, color)', 'syncPaletteButtons()', 'applyLastColor(kind, range)']) {
+    assert.ok(js.includes(fn), `缺少上次颜色能力 ${fn}`);
+  }
+  assert.ok(js.includes('data-palette="${t.palette}"'), '刷子按钮应标记颜色种类');
+  assert.ok(js.includes('applyLastColor(t.palette, Views.notes.format.currentRange())'), '左键应直接应用上次颜色');
+  assert.ok(js.includes('btn.oncontextmenu = e =>'), '右键应打开换色色板');
+  assert.ok(js.includes("rememberColor('fg', value)"), '字体颜色应刷新默认色');
+  assert.ok(js.includes("rememberColor('hl', value)"), '高亮色应刷新默认色');
+  const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  assert.ok(css.includes('.tb-palette-btn::after'), '刷子按钮应显示当前默认色条');
+});
+
 // ---------- AI 助教：多窗口 / 缩小续答 / 选段批注 ----------
 test('note-chat：多窗口并发，每个窗口独立会话与发送状态（源码契约）', () => {
   const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
