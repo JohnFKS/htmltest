@@ -49,7 +49,7 @@ window.RichAsk = (() => {
     const range = sel.getRangeAt(0).cloneRange();
     const el = scopeEl(sel.anchorNode) || scopeEl(sel.focusNode);
     if (!el) return null;
-    const editor = el.closest('#editor-area');
+    const editor = el.closest('#editor-area, .quiz-bank-editor');
     let anchor = null, source = null;
     if (editor) {
       const startPath = pathOf(range.startContainer, editor);

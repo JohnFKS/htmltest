@@ -25,7 +25,9 @@ Views.notes = {
   format: {
     painter: { armed: false, data: null, source: null },
 
-    editorEl() { return document.getElementById('editor-area'); },
+    // 复用给题库管理编辑器：buildToolbar 会注册当前编辑区；没有注册时回退到笔记编辑区
+    editorEl() { return this._editor || document.getElementById('editor-area'); },
+    setEditor(el) { this._editor = el || null; this.syncPaletteButtons(); },
 
     currentRange() {
       const sel = window.getSelection();
@@ -93,7 +95,7 @@ Views.notes = {
       for (const kind of ['hl', 'fg']) {
         const color = this.lastColor(kind);
         const label = kind === 'hl' ? '高亮' : '文字颜色';
-        document.querySelectorAll(`#editor-toolbar .tb-palette-btn[data-palette="${kind}"]`).forEach(btn => {
+        document.querySelectorAll(`.tb-palette-btn[data-palette="${kind}"]`).forEach(btn => {
           btn.style.setProperty('--last', color);
           btn.title = `${label}小刷子：左键应用上次颜色 ${color}，右键更换颜色`;
           btn.setAttribute('aria-label', btn.title);
@@ -1135,6 +1137,7 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
   },
 
   buildToolbar(bar, editor, save, undoApi = {}) {
+    Views.notes.format.setEditor(editor);
     const icon = (name, size = 16) => Icon.svg(name, size);
     const exec = (cmd, val) => { editor.focus(); document.execCommand(cmd, false, val); };
     const insertHTML = html => {
@@ -1322,6 +1325,7 @@ hr{border:none;border-top:1px solid #e6e1d3;margin:18px 0}
       document.removeEventListener('pointerdown', onDocDown);
       editor.removeEventListener('mouseup', onPaintSelect);
       editor.removeEventListener('keyup', onPaintSelect);
+      if (Views.notes.format.editorEl() === editor) Views.notes.format.setEditor(null);
       Views.notes.format.disarm();
     };
   },

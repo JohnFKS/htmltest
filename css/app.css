@@ -608,6 +608,28 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 .quiz-nav-item:hover { background: var(--surface-2); }
 .quiz-nav-item.active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
 .q-card { padding: 20px 24px; }
+/* 题库管理：左侧题库列表 + 右侧笔记同款富文本编辑器 */
+.quiz-manage-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 10px; align-items: start; }
+.bank-manage-list { padding: 12px; display: flex; flex-direction: column; gap: 4px; max-height: 78vh; overflow-y: auto; }
+.bank-manage-item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; padding: 8px 10px;
+  border: 1px solid transparent; border-radius: var(--radius-sm); background: none;
+  color: var(--ink); font-family: var(--font); cursor: pointer;
+}
+.bank-manage-item:hover { background: var(--surface-2); }
+.bank-manage-item.active { background: var(--primary-soft); border-color: var(--line-2); color: var(--primary); }
+.bank-manage-main { padding: 14px 16px; min-width: 0; }
+.bank-manage-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.bank-manage-main .editor-toolbar { margin: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.quiz-bank-editor { height: min(58vh, 680px); border-radius: 0 0 var(--radius-sm) var(--radius-sm); }
+.bank-manage-status { padding: 6px 2px; }
+.bank-source { margin-top: 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; }
+.bank-source summary { cursor: pointer; font-size: 13px; color: var(--ink-2); font-weight: 600; }
+.bank-source .textarea { margin-top: 8px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+@media (max-width: 900px) {
+  .quiz-manage-layout { grid-template-columns: 1fr; }
+  .bank-manage-list { max-height: 190px; }
+}
 .q-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
 .q-stem { font-size: 15.5px; line-height: 1.8; }
 .q-options { margin: 10px 0 0; padding: 0; list-style: none; }

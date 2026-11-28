@@ -136,6 +136,7 @@ Views.quiz = {
       <div class="tabs" id="quiz-tabs">
         <button class="tab ${st.tab === 'practice' ? 'active' : ''}" data-name="practice">📝 练习</button>
         <button class="tab ${st.tab === 'exam' ? 'active' : ''}" data-name="exam">🎯 模拟考试</button>
+        <button class="tab ${st.tab === 'manage' ? 'active' : ''}" data-name="manage">🗂 题库管理</button>
         <button class="tab ${st.tab === 'import' ? 'active' : ''}" data-name="import">📥 题库导入</button>
       </div>
       <div id="quiz-body"></div>`;
@@ -148,13 +149,166 @@ Views.quiz = {
 
   renderTab(body) {
     const st = this.state;
+    this._toolbarCleanup?.();
+    this._toolbarCleanup = null;
     body.innerHTML = `<div class="tab-panel ${st.tab === 'practice' ? 'active' : ''}" data-name="practice" id="panel-practice"></div>
                       <div class="tab-panel ${st.tab === 'exam' ? 'active' : ''}" data-name="exam" id="panel-exam"></div>
+                      <div class="tab-panel ${st.tab === 'manage' ? 'active' : ''}" data-name="manage" id="panel-manage"></div>
                       <div class="tab-panel ${st.tab === 'import' ? 'active' : ''}" data-name="import" id="panel-import"></div>`;
     if (st.tab === 'practice') this.renderPractice(body.querySelector('#panel-practice'));
     else if (st.tab === 'exam') this.renderExam(body.querySelector('#panel-exam'));
+    else if (st.tab === 'manage') this.renderManage(body.querySelector('#panel-manage'));
     else this.renderImport(body.querySelector('#panel-import'));
     Ktx.renderMath(body);
+  },
+
+  // ================= 题库管理（完整内容 / 源文件 / 复用笔记编辑器） =================
+  bankContentHtml(bank) {
+    // 不把题库标题写成正文第一行：LocalBankParser 会把无编号标题误当一道题
+    if (bank?.content) return Sanitize.html(bank.content).replace(/^\s*<h3[^>]*>[^<]*<\/h3>/i, '');
+    const body = (bank?.questions || []).map((q, i) => {
+      const num = q.number || i + 1;
+      return `<p><b>${num}. ${U.esc(q.stem || '')}</b></p>`
+        + (q.options || []).map(o => `<p>${U.esc(o)}</p>`).join('')
+        + (q.answer ? `<p>答案：${U.esc(q.answer)}</p>` : '')
+        + (q.analysis ? `<p>解析：${U.esc(q.analysis)}</p>` : '')
+        + (q.knowledge ? `<p>知识点：${U.esc(q.knowledge)}</p>` : '');
+    }).join('\n');
+    return body;
+  },
+
+  bankToMarkdown(bank) {
+    const lines = [`# ${bank?.name || '未命名题库'}`, ''];
+    (bank?.questions || []).forEach((q, i) => {
+      lines.push(`${q.number || i + 1}. ${q.stem || ''}`);
+      (q.options || []).forEach(o => lines.push(o));
+      if (q.answer) lines.push(`答案：${q.answer}`);
+      if (q.analysis) lines.push(`解析：${q.analysis}`);
+      if (q.knowledge) lines.push(`知识点：${q.knowledge}`);
+      lines.push('');
+    });
+    return lines.join('\n');
+  },
+
+  parseBankEditor(editor, oldQuestions = []) {
+    const parsed = LocalBankParser.parse(editor.innerText || '');
+    if (!parsed.questions.length) return null;
+    return parsed.questions.map((q, i) => ({
+      ...(oldQuestions[i] || {}), ...q,
+      id: oldQuestions[i]?.id || U.uid('q'),
+      type: oldQuestions[i]?.type || q.type,
+    }));
+  },
+
+  renderManage(panel) {
+    const banks = Store.coll('banks');
+    if (!banks.length) {
+      panel.innerHTML = UI.emptyState('还没有题库。请先到「题库导入」创建，再回来管理。');
+      return;
+    }
+    if (!banks.some(b => b.id === this.state.manageBankId)) this.state.manageBankId = this.state.bankId || banks[0].id;
+    const bank = banks.find(b => b.id === this.state.manageBankId) || banks[0];
+    const sourceText = bank.sourceText || this.bankToMarkdown(bank);
+    panel.innerHTML = `
+      <div class="quiz-manage-layout">
+        <aside class="card bank-manage-list">
+          <div class="card-title">题库列表 <span class="chip">${banks.length}</span></div>
+          ${banks.map(b => `<button type="button" class="bank-manage-item ${b.id === bank.id ? 'active' : ''}" data-bank="${b.id}">
+            <b>${U.esc(b.name)}</b>
+            <span class="small muted">${(b.questions || []).length} 题${b.fileName ? ' · ' + U.esc(b.fileName) : ''}</span>
+          </button>`).join('')}
+        </aside>
+        <section class="card bank-manage-main">
+          <div class="bank-manage-head">
+            <input class="input" id="bm-name" value="${U.esc(bank.name || '')}" placeholder="题库名称" style="max-width:300px">
+            <span class="chip chip-type">${(bank.questions || []).length} 题</span>
+            <span class="chip">${U.esc(bank.fileName || '未关联文件')}</span>
+            <span style="flex:1"></span>
+            <button class="btn btn-primary btn-sm" id="bm-save">保存并同步题目</button>
+            <button class="btn btn-sm" id="bm-export">导出 .md</button>
+            <button class="btn btn-sm" id="bm-file">替换源文件</button>
+            <button class="btn btn-sm btn-ghost" id="bm-rebuild">从题目重建内容</button>
+            <button class="btn btn-sm btn-ghost" id="bm-delete" style="color:var(--danger)">删除题库</button>
+          </div>
+          <div class="field-hint" style="margin:6px 0 8px">复用笔记模块的富文本工具栏：加粗/颜色/高亮/格式刷/公式/表格等均可直接编辑。保存时按题号、选项、答案行重新解析为可刷题的题目。</div>
+          <div class="editor-toolbar bank-toolbar" id="bm-toolbar"></div>
+          <div class="editor-area rich quiz-bank-editor" id="bm-editor" contenteditable="true" data-ph="输入完整题库内容：题号. 题干 / A. 选项 / 答案：A / 解析：…"></div>
+          <div class="bank-manage-status"><span id="bm-status" class="muted small">所有修改尚未保存</span></div>
+          <details class="bank-source">
+            <summary>查看 / 编辑源文件（${U.esc(bank.fileName || '题库原文')}）</summary>
+            <textarea class="textarea" id="bm-source" rows="10" spellcheck="false">${U.esc(sourceText)}</textarea>
+            <div class="field-hint">源文件仅作存档；修改后点「保存并同步题目」写入题库。</div>
+          </details>
+        </section>
+      </div>`;
+
+    const editor = panel.querySelector('#bm-editor');
+    editor.innerHTML = this.bankContentHtml(bank);
+    Ktx.renderMath(editor);
+    let dirty = false;
+    const markDirty = () => { dirty = true; panel.querySelector('#bm-status').textContent = '有未保存的修改'; };
+    editor.oninput = markDirty;
+    panel.querySelector('#bm-name').oninput = markDirty;
+    panel.querySelector('#bm-source').oninput = markDirty;
+    this._toolbarCleanup = Views.notes.buildToolbar(panel.querySelector('#bm-toolbar'), editor, markDirty);
+
+    panel.querySelectorAll('[data-bank]').forEach(btn => btn.onclick = () => {
+      this.state.manageBankId = btn.dataset.bank;
+      this.state.bankId = btn.dataset.bank;
+      this.renderTab(panel.closest('#quiz-body'));
+    });
+
+    panel.querySelector('#bm-save').onclick = () => {
+      const name = panel.querySelector('#bm-name').value.trim() || '未命名题库';
+      const content = Sanitize.html(editor.innerHTML);
+      const src = panel.querySelector('#bm-source').value;
+      const questions = this.parseBankEditor(editor, bank.questions || []);
+      Store.update('banks', bank.id, {
+        name, content, sourceText: src,
+        ...(questions ? { questions } : {}),
+        updatedAt: U.now(),
+      });
+      this.state.bankId = bank.id;
+      UI.toast(questions ? `已保存「${name}」（${questions.length} 题）` : `已保存「${name}」（未识别到新题目，保留原题目）`, questions ? 'success' : 'warn');
+      this.renderTab(panel.closest('#quiz-body'));
+    };
+
+    panel.querySelector('#bm-export').onclick = () => {
+      U.download(`${(panel.querySelector('#bm-name').value.trim() || bank.name || '题库').replace(/[\\/:*?"<>|]/g, '_')}.md`,
+        panel.querySelector('#bm-source').value || this.bankToMarkdown(bank), 'text/markdown');
+    };
+
+    panel.querySelector('#bm-file').onclick = () => {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = '.md,.txt,.markdown';
+      input.style.display = 'none'; document.body.appendChild(input);
+      input.onchange = async () => {
+        const f = input.files[0]; input.remove();
+        if (!f) return;
+        const text = await f.text();
+        panel.querySelector('#bm-source').value = text;
+        markDirty();
+        UI.toast(`已载入源文件「${f.name}」，保存后写入题库`, 'success');
+      };
+      input.click();
+    };
+
+    panel.querySelector('#bm-rebuild').onclick = async () => {
+      if (dirty && !await UI.confirm('当前编辑内容尚未保存，确定用题目重新生成内容？')) return;
+      editor.innerHTML = this.bankContentHtml({ ...bank, content: '' });
+      Ktx.renderMath(editor);
+      markDirty();
+      UI.toast('已按当前题目重建内容，记得保存', 'info');
+    };
+
+    panel.querySelector('#bm-delete').onclick = async () => {
+      if (!await UI.confirm(`删除题库「${bank.name}」？（归档错题不受影响）`, { danger: true })) return;
+      Store.remove('banks', bank.id);
+      this.state.manageBankId = null;
+      this.state.bankId = Store.coll('banks')[0]?.id || null;
+      UI.toast('题库已删除', 'success');
+      this.renderTab(panel.closest('#quiz-body'));
+    };
   },
 
   // ================= 导入 =================
@@ -179,19 +333,27 @@ Views.quiz = {
       </div>
       <div id="imp-preview"></div>`;
 
+    const sourceMeta = { fileName: '', sourceText: '' };
     panel.querySelector('#imp-file').onclick = () => {
       const input = document.createElement('input');
       input.type = 'file'; input.accept = '.md,.txt,.markdown';
       input.onchange = async () => {
-        if (!input.files[0]) return;
-        panel.querySelector('#imp-text').value = await input.files[0].text();
+        const f = input.files[0];
+        if (!f) return;
+        const text = await f.text();
+        sourceMeta.fileName = f.name;
+        sourceMeta.sourceText = text;
+        panel.querySelector('#imp-text').value = text;
         UI.toast('已读入文件，点击「解析预览」');
       };
       input.click();
     };
     panel.querySelector('#imp-sample').onclick = async () => {
       const resp = await fetch('/sample/示例题库.md');
-      panel.querySelector('#imp-text').value = await resp.text();
+      const text = await resp.text();
+      sourceMeta.fileName = '示例题库.md';
+      sourceMeta.sourceText = text;
+      panel.querySelector('#imp-text').value = text;
       UI.toast('示例题库已载入，点击「解析预览」');
     };
     panel.querySelector('#imp-doc').onclick = () => { location.hash = 'help'; };
@@ -199,6 +361,7 @@ Views.quiz = {
     const doParse = async (useAI) => {
       const text = panel.querySelector('#imp-text').value;
       if (!text.trim()) return UI.toast('请先粘贴题库文本或载入示例', 'warn');
+      sourceMeta.sourceText = text;
       const genMode = useAI && panel.querySelector('#imp-genmode')?.checked;
       let result;
       try {
@@ -212,13 +375,13 @@ Views.quiz = {
           result = { data: LocalBankParser.parse(text), demo: true };
         } else return UI.toast(e.message, 'error');
       }
-      this.showImportPreview(panel.querySelector('#imp-preview'), result.data, result.demo);
+      this.showImportPreview(panel.querySelector('#imp-preview'), result.data, result.demo, sourceMeta);
     };
     panel.querySelector('#imp-parse').onclick = () => doParse(false);
     panel.querySelector('#imp-ai').onclick = () => UI.busy(panel.querySelector('#imp-ai'), () => doParse(true), 'LLM 解析中');
   },
 
-  showImportPreview(previewEl, data, demo) {
+  showImportPreview(previewEl, data, demo, meta = {}) {
     if (!data.questions?.length) {
       previewEl.innerHTML = UI.emptyState('未能解析出题目：请检查题号/选项/答案的书写格式（点「格式规范」查看）');
       return;
@@ -280,10 +443,12 @@ Views.quiz = {
       if (!questions.length) return UI.toast('没有可保存的题目', 'warn');
       const bank = Store.insert('banks', {
         id: U.uid('bank'), name, createdAt: U.now(), updatedAt: U.now(),
+        fileName: meta.fileName || '', sourceText: meta.sourceText || '',
+        content: this.bankContentHtml({ name, questions }),
         questions: questions.map(q => ({
           id: q.id || U.uid('q'), number: q.number || '', chapter: q.chapter || '',
           stem: q.stem || '', options: q.options || [], answer: q.answer || '',
-          analysis: q.analysis || '', knowledge: q.knowledge || '',
+          analysis: q.analysis || '', knowledge: q.knowledge || '', type: q.type || inferQuestionType(q),
         })),
       });
       this.state.bankId = bank.id;

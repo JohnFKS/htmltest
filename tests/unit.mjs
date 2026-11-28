@@ -585,3 +585,31 @@ test('模拟考试：自定义题型数量 / 点击选项 / 草稿本（源码�
     assert.ok(css.includes(sel), `样式缺少 ${sel}`);
   }
 });
+
+test('题库管理：完整内容可编辑、源文件保留、复用笔记工具栏（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/views/quiz.js'), 'utf8');
+  for (const id of ['bm-name', 'bm-editor', 'bm-toolbar', 'bm-source', 'bm-save', 'bm-export', 'bm-file', 'bm-rebuild', 'bm-delete']) {
+    assert.ok(src.includes(`id="${id}"`), `缺少题库管理控件 ${id}`);
+  }
+  assert.ok(src.includes('data-name="manage"'), '刷题页应有题库管理标签');
+  assert.ok(src.includes('Views.notes.buildToolbar'), '题库管理应复用笔记编辑工具栏');
+  assert.ok(src.includes('parseBankEditor(editor, bank.questions || [])'), '保存时应把编辑内容解析回题目');
+  assert.ok(src.includes('fileName: meta.fileName'), '导入文件信息应写入题库');
+  assert.ok(src.includes('sourceText: src'), '源文件应随题库保存');
+  const notes = readFileSync(path.join(ROOT, 'js/views/notes.js'), 'utf8');
+  assert.ok(notes.includes('setEditor(el)'), '笔记格式能力应支持切换编辑区');
+  const ask = readFileSync(path.join(ROOT, 'js/core/rich-ask.js'), 'utf8');
+  assert.ok(ask.includes('.quiz-bank-editor'), '题库编辑区也应支持右键格式菜单');
+  const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  assert.ok(css.includes('.quiz-manage-layout') && css.includes('.quiz-bank-editor'), '题库管理应有对应样式');
+
+  load('js/views/quiz.js');
+  const parsed = globalThis.Views.quiz.parseBankEditor(
+    { innerText: '1. 判断题示例\nA. 正确\nB. 错误\n答案：A' },
+    [{ id: 'q_old', type: 'judge', knowledge: '常识' }],
+  );
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].id, 'q_old', '回写应保留原题目 ID');
+  assert.equal(parsed[0].type, 'judge', '回写应保留原题型');
+  assert.equal(parsed[0].answer, 'A');
+});
