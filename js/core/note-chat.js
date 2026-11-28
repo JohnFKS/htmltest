@@ -6,6 +6,42 @@ window.NoteChat = (() => {
   const KEEP_RECENT = 10;      // 最近 N 条消息始终逐字保留
   const AUTO_COMPACT_AT = 8;   // 未压缩旧消息达到该数量时自动生成摘要
 
+  // 只有明确要求“改动内容”时才让模型进入工具循环；普通解释/总结/举例一律走纯文本回答
+  const TOOL_INTENT_RE = /(编辑|修改|改写|替换|追加|插入到|插入|删除|删掉|移除|创建|新建|生成题库|生成笔记|整理成|做成|导出成|重命名|改名为|改标题|高亮|标红|标黄|着色|上色|格式化|排版|写入|写进|加入|存为|保存为|新增|填到|复制到)/i;
+  const wantsToolCall = (question = '', selection = '') => TOOL_INTENT_RE.test(`${question} ${selection}`);
+  const TOOL_LABELS = {
+    edit_note: '编辑笔记', search_content: '搜索内容', read_content: '读取内容',
+    create_note: '新建笔记', create_card: '新建卡片', create_bank: '新建题库',
+    update_content: '更新内容', delete_content: '删除内容',
+  };
+  const parseToolArgs = raw => {
+    if (raw && typeof raw === 'object') return raw;
+    try { return JSON.parse(String(raw || '{}')); } catch (e) { return {}; }
+  };
+  const prettyToolValue = value => {
+    let out = value;
+    if (typeof value === 'string') {
+      try { out = JSON.parse(value); } catch (e) { out = value; }
+    }
+    const text = typeof out === 'string' ? out : (() => { try { return JSON.stringify(out, null, 2); } catch (e) { return String(out); } })();
+    return String(text ?? '').slice(0, 4000);
+  };
+  const toolLogHtml = (edits = [], summary = '') => `<details class="chat-tools">
+    <summary><span class="tool-chevron">▸</span> 工具调用 · ${edits.length} 项${summary ? ` · ${U.esc(summary)}` : ''}</summary>
+    <div class="chat-tool-list">${edits.map(x => {
+      const args = parseToolArgs(x.args);
+      const reason = x.result?.message || x.result?.error || args.reason || args.action || '';
+      const ok = !!x.result?.ok;
+      return `<details class="chat-tool-item ${ok ? 'ok' : 'fail'}">
+        <summary><span class="tool-status">${ok ? '✓' : '✕'}</span><code>${U.esc(TOOL_LABELS[x.name] || x.name || '工具')}</code><span class="tool-name">${U.esc(x.name || '')}</span>${reason ? `<span class="tool-reason">${U.esc(String(reason).slice(0, 100))}</span>` : ''}</summary>
+        <div class="tool-payload">
+          <div><b>调用参数</b><pre>${U.esc(prettyToolValue(args))}</pre></div>
+          <div><b>返回结果</b><pre>${U.esc(prettyToolValue(x.result))}</pre></div>
+        </div>
+      </details>`;
+    }).join('')}</div>
+  </details>`;
+
   const windows = [];          // 当前打开的对话窗口（每个窗口有独立 pending / 会话 / @ 状态）
   let seq = 0;
   let chatWidth = 460;
@@ -600,8 +636,7 @@ window.NoteChat = (() => {
         <div class="chat-avatar ai">✒</div>
         <div class="chat-msg-col">
           ${refChips(m.refs)}
-          ${m.edits?.length ? `<div class="chat-edit-log">${m.edits.map(x =>
-            `<div class="chat-edit-item ${x.result?.ok ? 'ok' : 'fail'}">${x.result?.ok ? '✓' : '✕'} ${U.esc((x.args && (() => { try { return JSON.parse(x.args).reason || JSON.parse(x.args).action; } catch (_) { return '编辑'; } })()) || '编辑')}${x.result?.error ? ' · ' + U.esc(x.result.error) : ''}</div>`).join('')}</div>` : ''}
+          ${m.edits?.length ? toolLogHtml(m.edits, m.editSummary || '') : ''}
           <div class="chat-bubble ai-report">${Sanitize.html(answer)}</div>
           <div class="chat-msg-ops">
             <button data-act="ask-part" data-id="${m.id}" title="先在回答中选中一段文字">选段追问</button>
@@ -710,8 +745,8 @@ window.NoteChat = (() => {
     };
     try {
       const note = noteOf(s);
-      // 编辑模式在任意视图生效：未打开的笔记由 executeNoteEdit 离线路径直接写入（不再要求必须在笔记页）
-      const useAgent = agentMode && Store.aiLive() && !!note;
+      // 编辑模式在任意视图生效；但仍需本轮问题确实包含“改动内容”的意图，避免简单问答误入工具循环
+      const useAgent = agentMode && Store.aiLive() && !!note && wantsToolCall(question, selection);
       // @ 引用与全局检索：refsText 携带引用全文，digest 让模型知道全局有什么，onRead 供 search/read 工具
       const refs = opts.refs || [];
       const refsText = refs.map(r => NoteRefs.resolve(r).text).join('\n\n');
@@ -747,22 +782,26 @@ window.NoteChat = (() => {
           question,
           history,
           summary: memoryOf(s).summary,
-          refsText, globalDigest, onRead, quotedAnswer, parentQuestion,
+          refsText, globalDigest, quotedAnswer, parentQuestion,
           noteId: note?.id || '',
         });
       const html = U.asText(res?.html ?? '');
       const cited = extractRefs(html);
       insert({
         id: U.uid('msg'), role: 'assistant', html, text: U.stripHtml(html),
-        demo: !!res?.demo, context: res?.context || null, edits: res?.edits || null,
+        demo: !!res?.demo, context: res?.context || null,
+        edits: res?.edits?.length ? res.edits : null, editSummary: res?.editSummary || '',
         refs: cited.length ? cited : undefined, createdAt: U.now(),
       });
       Store.update(COLL, s.id, { messages: s.messages });
       await maybeCompact(w, s);
     } catch (e) {
+      const msg = String(e.message || '未知错误');
+      const badRequest = /Invalid provider request|上游 API 错误 (400|404)|tool|unsupported/i.test(msg);
       insert({
-        id: U.uid('msg'), role: 'assistant', text: e.message || 'AI 调用失败',
-        html: `<p class="chat-error">AI 调用失败：${U.esc(e.message || '未知错误')}</p>`,
+        id: U.uid('msg'), role: 'assistant', text: msg,
+        html: `<p class="chat-error">AI 调用失败：${U.esc(msg)}</p>`
+          + (badRequest ? '<p class="chat-error-hint">上游拒绝了请求格式。系统已自动尝试去掉工具参数重试；若仍失败，请到「设置」核对 Base URL 与对话模型是否兼容。简单提问无需开启「编辑模式」。</p>' : ''),
         error: true, createdAt: U.now(),
       });
       Store.update(COLL, s.id, { messages: s.messages });

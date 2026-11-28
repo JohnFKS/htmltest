@@ -204,16 +204,34 @@ def proxy_ai(payload: dict, cfg: dict, kind: str) -> dict:
         }
         if not body["model"]:
             raise RuntimeError("未设置向量模型（embedModel）")
-    req = urllib.request.Request(
-        url, data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        headers=headers, method="POST",
-    )
-    try:
+    def post(payload_body):
+        req = urllib.request.Request(
+            url, data=json.dumps(payload_body, ensure_ascii=False).encode("utf-8"),
+            headers=headers, method="POST",
+        )
         with urllib.request.urlopen(req, timeout=300) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
+            return json.loads(resp.read().decode("utf-8"))
+
+    try:
+        result = post(body)
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"上游 API 错误 {e.code}：{detail}")
+        # 部分 OpenAI 兼容网关（Dots 等）对 tools/tool_choice/max_tokens 支持不一致，会用
+        # 404/400 "Invalid provider request" 拒绝整次请求。自动降级为最朴素的 chat 请求重试一次，
+        # 这样简单问答不会因为工具参数而失败；工具模式仍优先尝试，失败后才降级。
+        bad_shape = e.code in (400, 404) and re.search(
+            r"invalid provider request|invalid request|unsupported|tool|function_call", detail, re.I)
+        if kind == "chat" and bad_shape and ("tools" in body or "max_tokens" in body):
+            simple = {k: v for k, v in body.items() if k not in ("tools", "tool_choice", "max_tokens")}
+            try:
+                result = post(simple)
+            except urllib.error.HTTPError as e2:
+                d2 = e2.read().decode("utf-8", errors="replace")[:500]
+                raise RuntimeError(f"上游 API 错误 {e2.code}：{d2}（已自动尝试简化请求）")
+            except urllib.error.URLError as e2:
+                raise RuntimeError(f"无法连接 AI 接口：{e2.reason}")
+        else:
+            raise RuntimeError(f"上游 API 错误 {e.code}：{detail}")
     except urllib.error.URLError as e:
         raise RuntimeError(f"无法连接 AI 接口：{e.reason}")
 

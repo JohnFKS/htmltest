@@ -87,11 +87,14 @@ print('OK' if ok and not bad else 'FAIL')`;
   assert.equal(out.trim(), 'OK');
 });
 
-test('server.py：代理透传 tools 且回传 tool_calls（源码契约）', () => {
+test('server.py：代理透传 tools，并在上游拒绝工具参数时自动降级（源码契约）', () => {
   const src = readFileSync(path.join(ROOT, 'server.py'), 'utf8');
   assert.match(src, /body\["tools"\] = tools/);
   assert.match(src, /"tool_calls": tool_calls/);
   assert.match(src, /payload\.get\("tool_choice"\)/);
+  assert.match(src, /invalid provider request/, '应识别上游 Invalid provider request');
+  assert.match(src, /if k not in \("tools", "tool_choice", "max_tokens"\)/, '降级请求应去掉工具与输出上限参数');
+  assert.match(src, /已自动尝试简化请求/, '重试失败应给出明确提示');
 });
 
 test('provider：edit_note 工具定义包含 6 种受控操作（源码契约）', () => {
@@ -101,6 +104,20 @@ test('provider：edit_note 工具定义包含 6 种受控操作（源码契约�
     assert.ok(src.includes(`'${op}'`), `缺少操作 ${op}`);
   }
   assert.match(src, /for \(let round = 0; round < 8; round\+\+\)/, '工具循环应有轮次上限（8 轮，整章批量编辑需要）');
+  assert.match(src, /const useTools = canEdit \|\| canCrud/, '普通问答不应因 onRead 而启用工具');
+  assert.match(src, /editSummary/, '工具结果摘要应与正文分离');
+  assert.ok(!src.includes('prefix + cleanHtml(finalText)'), '不应把重复编辑摘要塞进回答正文');
+});
+
+test('NoteChat：简单提问不进工具循环，工具结果折叠展示（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
+  assert.match(src, /const wantsToolCall/, '应有显式操作意图判断');
+  assert.match(src, /agentMode && Store\.aiLive\(\) && !!note && wantsToolCall/, '编辑模式也需意图识别');
+  assert.match(src, /toolLogHtml\(m\.edits, m\.editSummary/, '工具日志应折叠展示');
+  assert.ok(!src.includes('chat-edit-log'), '不应再逐条平铺“✓ 编辑”');
+  assert.match(src, /chat-error-hint/, '上游 404/400 应给出可操作提示');
+  const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  assert.ok(css.includes('.chat-tools') && css.includes('.chat-tool-item'), '折叠工具详情应有样式');
 });
 
 test('工具执行器：替换块操作使用 Sanitize.html 消毒（源码契约）', () => {
@@ -217,7 +234,7 @@ test('provider：对话请求显式携带输出上限，防止配置过小导致
 
 test('note-chat：编辑模式不再要求处于笔记页，普通模式仍禁用编辑', () => {
   const src = readFileSync(path.join(ROOT, 'js/core/note-chat.js'), 'utf8');
-  assert.match(src, /const useAgent = agentMode && Store\.aiLive\(\) && !!note;/, '编辑模式应在任意视图生效（离线路径兜底）');
+  assert.match(src, /const useAgent = agentMode && Store\.aiLive\(\) && !!note && wantsToolCall/, '编辑模式应在任意视图生效，但需明确改动意图');
   assert.match(src, /return \{ anchor: s\.context\.anchor, selection: s\.context\.selection \|\| '' \}/, 'getAnchor 应同时返回选中文本供漂移校验');
 });
 

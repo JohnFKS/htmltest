@@ -596,9 +596,11 @@ window.AI = (() => {
     if (!q) throw new Error('问题不能为空');
     const { recent, recallText, stats } = assembleHistory(history, q);
     if (!live()) return Mock.ctxChat({ noteTitle, selection, question: q, history, summary, context: stats, refsText, globalDigest, quotedAnswer, parentQuestion });
-    // 编辑模式：edit_note + 读取工具；普通模式：仅只读检索工具（提示词仍用普通模板，不提编辑块列表）
+    // 只有显式提供编辑/增删改执行器时才启用工具。普通问答即使传入 onRead 也不带 tools，
+    // 避免网关拒绝函数参数，也避免模型把简单问题变成一串工具调用。
     const canEdit = typeof onToolCall === 'function';
-    const useTools = canEdit || onRead != null;
+    const canCrud = typeof onCrud === 'function';
+    const useTools = canEdit || canCrud;
     let system = fill(Store.prompt(canEdit ? 'ctxChatAgent' : 'ctxChat'), {
       noteTitle: U.asText(noteTitle || '当前笔记').slice(0, 80),
       noteText: noteExcerpt(noteText, selection),
@@ -636,17 +638,21 @@ window.AI = (() => {
       if (!res.toolCalls.length) { finalText = res.content; break; }
       messages.push({ role: 'assistant', content: res.content || null, tool_calls: res.toolCalls });
       for (const call of res.toolCalls) {
+        const callId = call?.id || U.uid('call');
         const result = await toolResult(call, onToolCall, onRead, onCrud);
-        edits.push({ name: call?.function?.name || 'edit_note', args: call?.function?.arguments || '', result });
-        messages.push({ role: 'tool', tool_call_id: call.id || U.uid('call'), content: JSON.stringify(result) });
+        edits.push({
+          id: callId, name: call?.function?.name || 'unknown_tool',
+          args: call?.function?.arguments || '', result, round: round + 1,
+        });
+        messages.push({ role: 'tool', tool_call_id: callId, content: JSON.stringify(result) });
       }
       if (round === 7) finalText = '本轮工具调用已达次数上限，尚未完成的编辑请让学生再次提出。';
     }
     const okCount = edits.filter(e => e.result?.ok).length;
-    const prefix = okCount
-      ? `<p class="hl-good">已按你的要求编辑笔记（成功 ${okCount} 项${edits.length > okCount ? `、跳过 ${edits.length - okCount} 项` : ''}，编辑前已存版本快照，可在「历史」中恢复）。</p>`
+    const editSummary = edits.length
+      ? `成功 ${okCount} 项${edits.length > okCount ? ` · 跳过 ${edits.length - okCount}` : ''}`
       : '';
-    return { html: prefix + cleanHtml(finalText), demo: false, context: stats, edits };
+    return { html: cleanHtml(finalText), demo: false, context: stats, edits, editSummary };
   }
 
   // 把旧对话压缩为长期记忆摘要（ConversationSummaryBuffer 风格）
