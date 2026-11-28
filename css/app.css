@@ -612,6 +612,22 @@ body.pane-resizing, body.pane-resizing * { cursor: col-resize !important; user-s
 .q-stem { font-size: 15.5px; line-height: 1.8; }
 .q-options { margin: 10px 0 0; padding: 0; list-style: none; }
 .q-options li { padding: 4px 0; font-size: 14.5px; }
+.q-options-clickable li { padding: 3px 0; }
+.chip-type { background: var(--primary-soft); color: var(--primary); }
+.opt-btn {
+  width: 100%; text-align: left; padding: 7px 10px; border: 1px solid var(--line-2);
+  border-radius: var(--radius-sm); background: var(--surface); color: var(--ink);
+  font-family: var(--font); font-size: 14.5px; cursor: pointer; transition: border-color .12s, background .12s, color .12s;
+}
+.opt-btn:hover { border-color: var(--primary); background: var(--primary-soft); }
+.opt-btn.selected { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.opt-btn.selected::after { content: ' ✓'; float: right; }
+.answer-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
+.answer-picker .field-hint { margin: 0; }
+.scratchpad { margin-top: 14px; border: 1px dashed var(--line-2); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface-2); }
+.scratchpad-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+.scratchpad .textarea { min-height: 72px; font-size: 13.5px; }
+.scratch-report { margin-top: 5px; padding: 8px 10px; border-left: 3px solid var(--tpl); background: var(--surface-2); white-space: pre-wrap; }
 .q-analysis { margin-top: 12px; padding: 10px 14px; background: var(--surface-2); border-radius: var(--radius-sm); border-left: 3px solid var(--gold); font-size: 14px; }
 .answer-tabs { margin-top: 16px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
 .answer-tabs-head { display: flex; border-bottom: 1px solid var(--line); background: var(--surface-2); }

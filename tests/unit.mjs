@@ -530,3 +530,41 @@ test('note-chat：打开笔记助教不复用带历史的旧会话（源码契�
   assert.ok(src.includes('opts.newSession ? null : emptyForNote(w.currentNoteId)'), '普通打开不得加载上次问答');
   assert.ok(src.includes('(emptyForNote(w.currentNoteId) || createSession({ noteId: w.currentNoteId })).id'), '切换笔记也应避免复用旧记忆');
 });
+
+test('模拟考试：题型识别与严格判分', () => {
+  load('js/views/quiz.js');
+  const bank = globalThis.LocalBankParser.parse([
+    '# 测试题库', '',
+    '1. 地球是圆的吗？', 'A. 正确', 'B. 错误', '答案：A', '',
+    '2. 以下哪个是偶数？', 'A. 1', 'B. 2', '答案：B', '',
+    '3. 以下哪些是偶数？', 'A. 2', 'B. 4', 'C. 5', '答案：AB',
+  ].join('\n'));
+  assert.equal(bank.questions[0].type, 'judge');
+  assert.equal(bank.questions[1].type, 'single');
+  assert.equal(bank.questions[2].type, 'multiple');
+
+  globalThis.Sim = { normalize: s => String(s || '').toLowerCase().replace(/\s+/g, '') };
+  const quiz = globalThis.Views.quiz;
+  const multi = { options: ['A. 2', 'B. 4', 'C. 5'], answer: 'AB' };
+  assert.equal(quiz.examCheck(multi, 'AB'), true);
+  assert.equal(quiz.examCheck(multi, 'A'), false, '漏选不得分');
+  assert.equal(quiz.examCheck(multi, 'ABC'), false, '多选不得分');
+  assert.equal(quiz.examCheck({ options: ['A. 正确', 'B. 错误'], answer: 'A' }, '正确'), true);
+});
+
+test('模拟考试：自定义题型数量 / 点击选项 / 草稿本（源码契约）', () => {
+  const src = readFileSync(path.join(ROOT, 'js/views/quiz.js'), 'utf8');
+  for (const id of ['ex-count', 'ex-scratch', 'eq-type']) {
+    assert.ok(src.includes(`id="${id}"`), `缺少考试控件 ${id}`);
+  }
+  assert.ok(src.includes('id="ex-${t}-count"'), '题型数量输入应按 QUIZ_TYPES 动态生成');
+  assert.ok(src.includes("data-type=\"${t}\""), '题型数量应标注类型');
+  assert.ok(src.includes('answerLetters(ex.answers[q.id])'), '客观题应按已选字母点击切换');
+  assert.ok(src.includes('ex.scratch[q.id] = e.target.value'), '草稿本应随作答记录');
+  assert.ok(src.includes('scratch: ex.scratch[q.id] ||'), '成绩应保存草稿');
+  assert.ok(src.includes('config: ex.config || null'), '考试记录应保存组卷配置');
+  const css = readFileSync(path.join(ROOT, 'css/app.css'), 'utf8');
+  for (const sel of ['.opt-btn.selected', '.scratchpad', '.chip-type']) {
+    assert.ok(css.includes(sel), `样式缺少 ${sel}`);
+  }
+});
